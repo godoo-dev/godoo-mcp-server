@@ -35,7 +35,11 @@ enforcement.
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — ship to validate)
+**Phase 1 — Foundations** (Validated in Phase 1: Foundations)
+
+- [x] Odoo client dependency resolved: `godoo-client>=0.2,<0.3`, Python ≥3.14 (FOUND-01)
+- [x] Single Python package scaffolded with `pyproject.toml`, `uv`/`hatchling`, LGPL-3.0 (FOUND-02)
+- [x] 3-gate CI (ruff / mypy / pytest) green on Python 3.14 (FOUND-03)
 
 ### Active
 
@@ -227,4 +231,4 @@ PROJECT.md evolves throughout the project lifecycle via two mechanisms:
 
 ---
 
-*Last updated: 2026-06-01 after initialization*
+*Last updated: 2026-06-01 — Phase 1 (Foundations) complete*
