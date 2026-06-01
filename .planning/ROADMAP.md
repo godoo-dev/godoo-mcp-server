@@ -32,7 +32,10 @@ OS-level sandbox whose isolation mechanism is decided at Wave 3 planning entry.
   1. The godoo dependency conflict is resolved: exact PyPI package name, version pin, and Python floor are confirmed in writing and reflected in `pyproject.toml` (this unblocks all coding)
   2. `pip install -e .` succeeds and `python -m godoo_mcp_server --version` (or equivalent) runs without error
   3. CI runs lint, type-check, and an empty test suite on the confirmed Python version — all green
-**Plans**: TBD
+**Plans:** 1 plan
+
+Plans:
+- [ ] 01-01-PLAN.md — Walking Skeleton: package scaffold + CI three-gate workflow + godoo-client pin confirmation
 
 ### Phase 2: Skeleton Server
 **Goal**: An MCP client can connect to the stateless Streamable HTTP endpoint and receive a valid tool list; credentials resolve per-request with no cross-user bleed
@@ -102,7 +105,7 @@ OS-level sandbox whose isolation mechanism is decided at Wave 3 planning entry.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundations | 0/TBD | Not started | - |
+| 1. Foundations | 0/1 | Planning complete | - |
 | 2. Skeleton Server | 0/TBD | Not started | - |
 | 3. Core Primitives | 0/TBD | Not started | - |
 | 4. Full Surface + Catalog + ACL + Skills | 0/TBD | Not started | - |
