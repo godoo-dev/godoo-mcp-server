@@ -105,7 +105,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundations | 1/1 | Complete   | 2026-06-01 |
+| 1. Foundations | 1/1 | Complete    | 2026-06-01 |
 | 2. Skeleton Server | 0/TBD | Not started | - |
 | 3. Core Primitives | 0/TBD | Not started | - |
 | 4. Full Surface + Catalog + ACL + Skills | 0/TBD | Not started | - |
