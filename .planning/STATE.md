@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-06-01T21:39:34.638Z"
-last_activity: 2026-06-01 -- Phase 01 planning complete
+status: verifying
+last_updated: "2026-06-01T21:47:41.827Z"
+last_activity: 2026-06-01
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 1
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 17
 ---
 
 # Project State
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** An AI agent can connect to the Streamable HTTP MCP server, authenticate as a real Odoo user (per-user credentials), and operate against any Odoo instance through a minimal set of raw Odoo primitives plus discoverable skill knowledge — with real per-user ACL enforcement.
-**Current focus:** Phase 1 — Foundations
+**Current focus:** Phase 01 — foundations
 
 ## Current Position
 
-Phase: 1 of 6 (Foundations)
-Plan: 0 of TBD in current phase
-Status: Ready to execute
-Last activity: 2026-06-01 -- Phase 01 planning complete
+Phase: 01 (foundations) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-06-01
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -61,6 +61,9 @@ Recent decisions affecting current work:
 
 - Roadmap creation: godoo dependency conflict (FOUND-01) must be resolved before any coding — exact PyPI name, version pin, Python floor unknown; two candidates: `godoo-client 0.2.1` (async, Python ≥3.14) vs unreleased `godoo>=1.1`. Blocks CI matrix, Docker base image, and PyPI publishability.
 - Code Mode sandbox mechanism (subprocess+seccomp vs Docker sidecar) is research-gated — decide at Phase 6 entry, document in PROJECT.md before implementation.
+- **Phase 01-01 executed:** D-01 confirmed — godoo-client>=0.2,<0.3 pinned; PyPI re-confirmed 0.2.1 latest (no 0.3.x published); Python floor >=3.14 correct.
+- **Phase 01-01 executed:** D-02 through D-05 all implemented — uv_build src-layout, CI matrix ["3.14"] three gates, all tool config in pyproject.toml.
+- **Phase 01-01 executed:** Walking skeleton complete — all gates green locally (ruff, mypy --strict, pytest 1 passed). uv.lock committed.
 
 ### Pending Todos
 
@@ -68,7 +71,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- **FOUND-01 blocker:** godoo dependency conflict unresolved — Phase 1 cannot complete until Marc confirms the correct PyPI package name, version pin, and Python floor. All downstream phases gate on this.
+- **FOUND-01 RESOLVED:** godoo-client>=0.2,<0.3 confirmed at phase close — 0.2.1 is latest, no 0.3.x published. Python floor >=3.14 confirmed. All downstream phases unblocked.
 - **Code Mode sandbox TBD:** Phase 6 starts with a mandatory research/decision step for the isolation mechanism.
 
 ## Deferred Items
@@ -79,6 +82,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-01T21:13:43.311Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-foundations/01-CONTEXT.md
+Last session: 2026-06-01T21:47:41.819Z
+Stopped at: Completed 01-foundations/01-01-PLAN.md — walking skeleton executed, all gates green
+Resume file: None

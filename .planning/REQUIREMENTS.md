@@ -9,9 +9,9 @@ REQ-ID format: `CATEGORY-NN`. Each requirement is user/agent-centric and testabl
 ## v1 Requirements
 
 ### Foundations (Wave 1)
-- [ ] **FOUND-01**: Resolve the Odoo client dependency — confirm the correct package name, version pin, and Python floor (SEED says `godoo >=1.1,<1.2`; PyPI shows `godoo-client 0.2.1` / Python ≥3.14). Block coding until resolved.
-- [ ] **FOUND-02**: Project scaffolds as a single Python package (`pyproject.toml`, `uv`/`hatchling`) with LGPL-3.0 license file and the resolved Python floor.
-- [ ] **FOUND-03**: CI runs lint + type-check + tests on the pinned Python version against the resolved godoo pin range.
+- [x] **FOUND-01**: Resolve the Odoo client dependency — confirm the correct package name, version pin, and Python floor (SEED says `godoo >=1.1,<1.2`; PyPI shows `godoo-client 0.2.1` / Python ≥3.14). Block coding until resolved.
+- [x] **FOUND-02**: Project scaffolds as a single Python package (`pyproject.toml`, `uv`/`hatchling`) with LGPL-3.0 license file and the resolved Python floor.
+- [x] **FOUND-03**: CI runs lint + type-check + tests on the pinned Python version against the resolved godoo pin range.
 
 ### Transport (Wave 1)
 - [ ] **TRANS-01**: Server exposes a Streamable HTTP MCP endpoint in stateless mode (`stateless_http=True`), with no `Mcp-Session-Id` emitted.
@@ -97,9 +97,9 @@ REQ-ID format: `CATEGORY-NN`. Each requirement is user/agent-centric and testabl
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 1 | Pending |
-| FOUND-02 | Phase 1 | Pending |
-| FOUND-03 | Phase 1 | Pending |
+| FOUND-01 | Phase 1 | Complete |
+| FOUND-02 | Phase 1 | Complete |
+| FOUND-03 | Phase 1 | Complete |
 | TRANS-01 | Phase 2 | Pending |
 | TRANS-02 | Phase 2 | Pending |
 | AUTH-01 | Phase 2 | Pending |
