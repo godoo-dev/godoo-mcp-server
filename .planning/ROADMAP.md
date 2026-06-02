@@ -165,3 +165,13 @@ Plans:
 | 4. Full Surface + Catalog + Skills | 6/6 | Complete   | 2026-06-02 |
 | 5. Package & Ship | 0/TBD | Not started | - |
 | 6. Code Mode | 0/TBD | Not started | - |
+
+### Phase 7: E2E agent testing over real MCP transport — a headless claude -p agent drives the godoo tools over the wire against a real Odoo, asserting both the agent result and the Odoo side-effect
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 6
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 7 to break down)

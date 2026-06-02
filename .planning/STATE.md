@@ -100,6 +100,10 @@ None yet.
 - **FOUND-01 RESOLVED:** godoo-client>=0.2,<0.3 confirmed at phase close — 0.2.1 is latest, no 0.3.x published. Python floor >=3.14 confirmed. All downstream phases unblocked.
 - **Code Mode sandbox TBD:** Phase 6 starts with a mandatory research/decision step for the isolation mechanism.
 
+### Roadmap Evolution
+
+- Phase 7 added: E2E agent testing over real MCP transport (claude -p agent → live Streamable-HTTP server → real Odoo; HOST/PORT env support in __main__.py; opt-in @pytest.mark.e2e; first flow = one agent-driven write verified in Odoo)
+
 ## Deferred Items
 
 | Category | Item | Status | Deferred At |
