@@ -16,7 +16,7 @@ OS-level sandbox whose isolation mechanism is decided at Wave 3 planning entry.
 
 - [x] **Phase 1: Foundations** - Resolve godoo dependency conflict, scaffold package, wire CI (completed 2026-06-01)
 - [x] **Phase 2: Skeleton Server** - Stateless Streamable HTTP transport + per-request credential resolution (completed 2026-06-02)
-- [ ] **Phase 3: Core Primitives** - Wave 1 tool surface end-to-end against a real Odoo instance
+- [x] **Phase 3: Core Primitives** - Wave 1 tool surface end-to-end against a real Odoo instance (completed 2026-06-02)
 - [ ] **Phase 4: Full Surface + Catalog + ACL + Skills** - Complete 17-tool surface, catalog, resources, ACL, skill files
 - [ ] **Phase 5: Package & Ship** - pip + Docker packaging, threat-model README, npm deprecation
 - [ ] **Phase 6: Code Mode** - execute_odoo_code with OS-level sandboxed execution
@@ -79,7 +79,7 @@ Plans:
   4. An intentionally invalid domain on `record.search` surfaces a structured MCP error carrying model name, field, and constraint detail — not a raw Python traceback
   5. One integration test in CI performs the full path (credential resolution → Odoo authenticate → record.search) against the pinned quickdoo/Odoo instance and passes green
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 **Wave 1**
@@ -90,7 +90,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03-04-PLAN.md — Integration + probe retirement: SC-3/SC-4/SC-5 integration tests, server.py swap, probe.py deleted (Wave 2)
+- [x] 03-04-PLAN.md — Integration + probe retirement: SC-3/SC-4/SC-5 integration tests, server.py swap, probe.py deleted (Wave 2)
 
 ### Phase 4: Full Surface + Catalog + ACL + Skills
 
@@ -146,7 +146,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Foundations | 1/1 | Complete    | 2026-06-01 |
 | 2. Skeleton Server | 2/2 | Complete   | 2026-06-02 |
-| 3. Core Primitives | 3/4 | In Progress|  |
+| 3. Core Primitives | 4/4 | Complete   | 2026-06-02 |
 | 4. Full Surface + Catalog + ACL + Skills | 0/TBD | Not started | - |
 | 5. Package & Ship | 0/TBD | Not started | - |
 | 6. Code Mode | 0/TBD | Not started | - |

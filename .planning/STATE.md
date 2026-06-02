@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-02T11:38:23.240Z"
-last_activity: 2026-06-02 -- Phase 03 execution started
+last_updated: "2026-06-02T11:58:16.608Z"
+last_activity: 2026-06-02
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 3
-  percent: 33
+  completed_plans: 7
+  percent: 50
 ---
 
 # Project State
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-06-01)
 ## Current Position
 
 Phase: 03 (core-primitives) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 03
-Last activity: 2026-06-02 -- Phase 03 execution started
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-06-02
 
-Progress: [███████░░░] 67%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [███████░░░] 67%
 *Updated after each plan completion*
 | Phase 02-skeleton-server P01 | 11min | 2 tasks | 10 files |
 | Phase 02-skeleton-server P02 | 9min | 2 tasks | 4 files |
+| Phase 03-core-primitives P04 | 12min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,8 @@ Recent decisions affecting current work:
 - **Phase 01-01 executed:** D-01 confirmed — godoo-client>=0.2,<0.3 pinned; PyPI re-confirmed 0.2.1 latest (no 0.3.x published); Python floor >=3.14 correct.
 - **Phase 01-01 executed:** D-02 through D-05 all implemented — uv_build src-layout, CI matrix ["3.14"] three gates, all tool config in pyproject.toml.
 - **Phase 01-01 executed:** Walking skeleton complete — all gates green locally (ruff, mypy --strict, pytest 1 passed). uv.lock committed.
+- [Phase ?]: D-13 completed: probe.py deleted, server.py import swapped in Plan 04 final task
+- [Phase ?]: D-02 confirmed: all 8 underscore tool names registered verbatim by fastmcp 3.3.x
 
 ### Pending Todos
 
@@ -84,6 +87,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-02T10:47:07.985Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-core-primitives/03-CONTEXT.md
+Last session: 2026-06-02T11:58:16.601Z
+Stopped at: Completed Phase 03-core-primitives Plan 04 (probe retirement + integration wiring)
+Resume file: None

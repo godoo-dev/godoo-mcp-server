@@ -24,19 +24,19 @@ REQ-ID format: `CATEGORY-NN`. Each requirement is user/agent-centric and testabl
 - [x] **AUTH-04**: Each request builds a fresh Odoo client from its own resolved credentials; no client/connection is shared across requests or users.
 
 ### Record primitives (Wave 1)
-- [ ] **REC-01**: Agent can search records of any model with a domain and return matching ids/records (`record.search`/`search_read`).
-- [ ] **REC-02**: Agent can read fields of records by id (`record.read`).
-- [ ] **REC-03**: Agent can create a record of any model (`record.create`).
-- [ ] **REC-04**: Agent can update fields of existing records (`record.update`/`write`).
-- [ ] **REC-05**: Agent can delete records (`record.delete`/`unlink`).
+- [x] **REC-01**: Agent can search records of any model with a domain and return matching ids/records (`record.search`/`search_read`).
+- [x] **REC-02**: Agent can read fields of records by id (`record.read`).
+- [x] **REC-03**: Agent can create a record of any model (`record.create`).
+- [x] **REC-04**: Agent can update fields of existing records (`record.update`/`write`).
+- [x] **REC-05**: Agent can delete records (`record.delete`/`unlink`).
 
 ### Discovery & identity (Wave 1)
-- [ ] **DISC-01**: Agent can list available Odoo models (`discovery.list_models`).
-- [ ] **DISC-02**: Agent can introspect a model's fields and types (`discovery.get_fields`).
-- [ ] **USER-01**: Agent can confirm the authenticated identity and connectivity (`users.whoami`).
+- [x] **DISC-01**: Agent can list available Odoo models (`discovery.list_models`).
+- [x] **DISC-02**: Agent can introspect a model's fields and types (`discovery.get_fields`).
+- [x] **USER-01**: Agent can confirm the authenticated identity and connectivity (`users.whoami`).
 
 ### Error contract (Wave 1)
-- [ ] **ERR-01**: Odoo errors are surfaced to the agent as structured MCP errors carrying model/field/constraint detail sufficient for self-correction.
+- [x] **ERR-01**: Odoo errors are surfaced to the agent as structured MCP errors carrying model/field/constraint detail sufficient for self-correction.
 
 ### Full tool surface (Wave 2)
 - [ ] **MAIL-01**: Mail/chatter capabilities exposed via `mail.*` tools (post message, log note, read chatter, manage activities/followers per the salvaged 17-tool surface).
@@ -106,15 +106,15 @@ REQ-ID format: `CATEGORY-NN`. Each requirement is user/agent-centric and testabl
 | AUTH-02 | Phase 2 | Complete |
 | AUTH-03 | Phase 2 | Complete |
 | AUTH-04 | Phase 2 | Complete |
-| REC-01 | Phase 3 | Pending |
-| REC-02 | Phase 3 | Pending |
-| REC-03 | Phase 3 | Pending |
-| REC-04 | Phase 3 | Pending |
-| REC-05 | Phase 3 | Pending |
-| DISC-01 | Phase 3 | Pending |
-| DISC-02 | Phase 3 | Pending |
-| USER-01 | Phase 3 | Pending |
-| ERR-01 | Phase 3 | Pending |
+| REC-01 | Phase 3 | Complete |
+| REC-02 | Phase 3 | Complete |
+| REC-03 | Phase 3 | Complete |
+| REC-04 | Phase 3 | Complete |
+| REC-05 | Phase 3 | Complete |
+| DISC-01 | Phase 3 | Complete |
+| DISC-02 | Phase 3 | Complete |
+| USER-01 | Phase 3 | Complete |
+| ERR-01 | Phase 3 | Complete |
 | MAIL-01 | Phase 4 | Pending |
 | ACT-01 | Phase 4 | Pending |
 | ATT-01 | Phase 4 | Pending |
