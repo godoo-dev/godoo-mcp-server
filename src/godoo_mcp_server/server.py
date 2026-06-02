@@ -17,9 +17,10 @@ mcp = FastMCP(
     instructions="Stateless MCP server for Odoo. Per-request credentials via X-Odoo-* headers.",
 )
 
-# Side-effect import: registers @mcp.tool decorators on the mcp instance above.
+# Side-effect imports: register @mcp.tool decorators on the mcp instance above.
 # Must be AFTER mcp is defined. noqa: F401 (unused import), E402 (not at top of file).
 from godoo_mcp_server.tools import probe as _probe_module  # noqa: F401, E402
+from godoo_mcp_server.tools import records as _records_module  # noqa: F401, E402
 
 
 def create_app() -> object:  # StarletteWithLifespan is a private fastmcp type; object is mypy-safe
