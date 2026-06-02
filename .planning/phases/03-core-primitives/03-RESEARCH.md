@@ -755,7 +755,7 @@ ruff-format-gap resolution are VERIFIED from installed package source.
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **D-12 username from credentials vs session**
    - What we know: `OdooSessionInfo` has only `uid`, `session_id`, `db`. `username`
@@ -764,7 +764,7 @@ ruff-format-gap resolution are VERIFIED from installed package source.
      different "display name" on `res.users`. D-11 says return `uid + username +
      database` — returning the login string as `username` is correct and costs no
      extra RPC.
-   - Recommendation: return `creds.username` as `username`. Document in tool
+   - RESOLVED: return `creds.username` as `username`. Document in tool
      description: "username is the Odoo login (same value as X-Odoo-Username header)."
 
 2. **`ir.model` pagination**
@@ -772,7 +772,7 @@ ruff-format-gap resolution are VERIFIED from installed package source.
      Odoo imposes a server-side limit (default 80 on many instances; configurable).
    - What's unclear: does the Odoo instance's `ir.model` table exceed the server's
      default limit? A fully loaded instance may have 400+ models.
-   - Recommendation: pass `limit=500` (safe cap above any realistic model count) in
+   - RESOLVED: pass `limit=500` (safe cap above any realistic model count) in
      `discovery_list_models` to avoid server-side truncation. Do NOT pass `limit=None`
      blindly.
 
@@ -780,7 +780,7 @@ ruff-format-gap resolution are VERIFIED from installed package source.
    - What we know: without `attributes` filter, `fields_get` returns all metadata per
      field, which can be large.
    - What's unclear: whether agents need the full metadata or a subset.
-   - Recommendation: use `attributes=["string", "type", "required", "readonly", "help",
+   - RESOLVED: use `attributes=["string", "type", "required", "readonly", "help",
      "relation"]` (add `relation` for relational field targets). Keep the list
      concise. Agents can always call `fields_get` with `attributes=None` via
      `call` if they need more.
