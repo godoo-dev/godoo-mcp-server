@@ -86,3 +86,38 @@ async def discovery_get_fields(
             return {"model": model, "fields": fields}
     except OdooError as e:
         raise ToolError(str(e)) from e
+
+
+@mcp.tool(
+    name="discovery_list_menus",
+    description=(
+        "List Odoo application menus (ir.ui.menu). Returns menu entries ordered by sequence."
+        " Use domain to filter by parent or action type."
+    ),
+)
+async def discovery_list_menus(
+    ctx: Context,
+    domain: list[Any] | None = None,
+    limit: int = 80,
+) -> dict[str, object]:
+    """Return ir.ui.menu records accessible to the current user, ordered by sequence."""
+    request = get_http_request()
+    creds: OdooCredentials = request.state.odoo_creds
+    config = OdooClientConfig(
+        url=creds.url,
+        database=creds.database,
+        username=creds.username,
+        password=creds.password,
+    )
+    try:
+        async with OdooClient(config) as client:
+            menus = await client.search_read(
+                "ir.ui.menu",
+                domain or [],
+                fields=["id", "name", "complete_name", "parent_id", "action", "sequence"],
+                limit=limit,
+                order="sequence",
+            )
+            return {"menus": menus, "count": len(menus)}
+    except OdooError as e:
+        raise ToolError(str(e)) from e

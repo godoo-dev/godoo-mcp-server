@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context  # noqa: TC002  # required at runtime for pydantic schema generation
 from fastmcp.exceptions import ToolError
@@ -42,5 +42,42 @@ async def users_whoami(ctx: Context) -> dict[str, object]:
                 "username": creds.username,
                 "database": session.db,
             }
+    except OdooError as e:
+        raise ToolError(str(e)) from e
+
+
+@mcp.tool(
+    name="users_search_users",
+    description=(
+        "Search Odoo users by domain filter. Returns res.users records."
+        " Default fields: id, name, login, active, share."
+    ),
+)
+async def users_search_users(
+    ctx: Context,
+    domain: list[Any] | None = None,
+    fields: list[str] | None = None,
+    limit: int = 80,
+    offset: int = 0,
+) -> dict[str, object]:
+    """Search res.users by domain. Returns list of user records and count."""
+    request = get_http_request()
+    creds: OdooCredentials = request.state.odoo_creds
+    config = OdooClientConfig(
+        url=creds.url,
+        database=creds.database,
+        username=creds.username,
+        password=creds.password,
+    )
+    try:
+        async with OdooClient(config) as client:
+            users = await client.search_read(
+                "res.users",
+                domain or [],
+                fields=fields or ["id", "name", "login", "active", "share"],
+                limit=limit,
+                offset=offset,
+            )
+            return {"users": users, "count": len(users)}
     except OdooError as e:
         raise ToolError(str(e)) from e
