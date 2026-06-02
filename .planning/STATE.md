@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-last_updated: "2026-06-02T20:09:50.727Z"
+status: ready_to_plan
+last_updated: 2026-06-02T20:24:13.329Z
 last_activity: 2026-06-02
 progress:
   total_phases: 7
@@ -11,6 +11,7 @@ progress:
   total_plans: 16
   completed_plans: 16
   percent: 71
+stopped_at: Phase 04.1 complete (3/3) — ready to discuss Phase 5
 ---
 
 # Project State
@@ -20,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** An AI agent can connect to the Streamable HTTP MCP server, authenticate as a real Odoo user (per-user credentials), and operate against any Odoo instance through a minimal set of raw Odoo primitives plus discoverable skill knowledge — with real per-user ACL enforcement.
-**Current focus:** Phase 04.1 — e2e-agent-testing-over-real-mcp-transport
+**Current focus:** Phase 5 — package & ship
 
 ## Current Position
 
-Phase: 04.1 (e2e-agent-testing-over-real-mcp-transport) — EXECUTING
-Plan: 3 of 3
-Status: Phase complete — ready for verification
+Phase: 5
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-06-02
 
 Progress: [██████████] 100%
@@ -35,7 +36,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 5
+- Total plans completed: 8
 - Average duration: -
 - Total execution time: -
 
@@ -45,6 +46,7 @@ Progress: [██████████] 100%
 |-------|-------|-------|----------|
 | 01 | 1 | - | - |
 | 03 | 4 | - | - |
+| 04.1 | 3 | - | - |
 
 **Recent Trend:**
 
