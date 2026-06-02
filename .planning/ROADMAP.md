@@ -14,7 +14,7 @@ OS-level sandbox whose isolation mechanism is decided at Wave 3 planning entry.
 
 ## Phases
 
-- [x] **Phase 1: Foundations** - Resolve godoo dependency conflict, scaffold package, wire CI (completed 2026-06-01)
+- [x] **Phase 1: Foundations** - Resolve godoo dependency conflict, scaffold package, wire CI (completed 2026-06-01)
 - [ ] **Phase 2: Skeleton Server** - Stateless Streamable HTTP transport + per-request credential resolution
 - [ ] **Phase 3: Core Primitives** - Wave 1 tool surface end-to-end against a real Odoo instance
 - [ ] **Phase 4: Full Surface + Catalog + ACL + Skills** - Complete 17-tool surface, catalog, resources, ACL, skill files
@@ -47,7 +47,11 @@ Plans:
   2. A request carrying `X-Odoo-Url` / `X-Odoo-Database` / `X-Odoo-Username` / `X-Odoo-Password` headers resolves those credentials; a request with no headers falls back to env vars; headers take precedence when both are present
   3. A request with neither headers nor env vars returns a clear 401-style MCP error with a human-readable message
   4. Two concurrent requests with different header credentials each resolve to their own isolated credential set — no shared `OdooClient` instance, no cross-user bleed confirmed by test
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Core vertical slice: credential middleware + server + probe tool + unit tests (Wave 1)
+- [ ] 02-02-PLAN.md — Integration test infrastructure + CI integration job (Wave 2)
 
 ### Phase 3: Core Primitives
 **Goal**: An MCP agent can authenticate as a real Odoo user, discover models and fields, perform all five record operations, and receive structured errors sufficient for self-correction — all verified against a live Odoo instance
@@ -106,7 +110,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundations | 1/1 | Complete    | 2026-06-01 |
-| 2. Skeleton Server | 0/TBD | Not started | - |
+| 2. Skeleton Server | 0/2 | Not started | - |
 | 3. Core Primitives | 0/TBD | Not started | - |
 | 4. Full Surface + Catalog + ACL + Skills | 0/TBD | Not started | - |
 | 5. Package & Ship | 0/TBD | Not started | - |
