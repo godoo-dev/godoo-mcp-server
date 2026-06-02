@@ -19,7 +19,7 @@ is decided at Wave 3 planning entry.
 - [x] **Phase 2: Skeleton Server** - Stateless Streamable HTTP transport + per-request credential resolution (completed 2026-06-02)
 - [x] **Phase 3: Core Primitives** - Wave 1 tool surface end-to-end against a real Odoo instance (completed 2026-06-02)
 - [x] **Phase 4: Full Surface + Catalog + Skills** - Complete tool surface, catalog, resources, skill files (ACL delegated to Odoo per D-12) (completed 2026-06-02)
-- [ ] **Phase 4.1: E2E agent testing over real MCP transport** (INSERTED)
+- [x] **Phase 4.1: E2E agent testing over real MCP transport** (INSERTED) (completed 2026-06-02)
 - [ ] **Phase 5: Package & Ship** - pip + Docker packaging, threat-model README, npm deprecation
 - [ ] **Phase 6: Code Mode** - execute_odoo_code with OS-level sandboxed execution
 
@@ -130,7 +130,7 @@ Plans:
 **Goal:** A headless claude -p agent drives godoo MCP tools over a real Streamable-HTTP TCP socket against a subprocess-launched server, creates a res.partner.category, and the test harness independently verifies the record exists in Odoo
 **Requirements**: TRANS-01, TRANS-02, AUTH-01, AUTH-02, AUTH-03, AUTH-04, REC-01
 **Depends on:** Phase 4
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1** *(no dependencies)*
@@ -143,7 +143,7 @@ Plans:
 
 **Wave 3** *(depends on Wave 2: fixtures must exist)*
 
-- [ ] 04.1-03-PLAN.md — E2E test: test_agent_creates_partner_category + README local run docs (Wave 3)
+- [x] 04.1-03-PLAN.md — E2E test: test_agent_creates_partner_category + README local run docs (Wave 3)
 
 ### Phase 5: Package & Ship
 
@@ -184,6 +184,6 @@ Plans:
 | 2. Skeleton Server | 2/2 | Complete   | 2026-06-02 |
 | 3. Core Primitives | 4/4 | Complete    | 2026-06-02 |
 | 4. Full Surface + Catalog + Skills | 6/6 | Complete   | 2026-06-02 |
-| 4.1 E2E agent testing over real MCP transport | 2/3 | In Progress|  |
+| 4.1 E2E agent testing over real MCP transport | 3/3 | Complete   | 2026-06-02 |
 | 5. Package & Ship | 0/TBD | Not started | - |
 | 6. Code Mode | 0/TBD | Not started | - |
