@@ -231,4 +231,4 @@ PROJECT.md evolves throughout the project lifecycle via two mechanisms:
 
 ---
 
-*Last updated: 2026-06-01 — Phase 1 (Foundations) complete*
+*Last updated: 2026-06-02 — Phase 3 (Core Primitives) complete: all 8 raw Odoo MCP tools (users_whoami, record_search/read/create/update/delete, discovery_list_models/get_fields) live and verified against a real Odoo instance; probe retired. REC-01..05, DISC-01/02, USER-01, ERR-01 validated.*
