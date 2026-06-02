@@ -102,6 +102,29 @@ async def read_action_resource(id: str) -> dict[str, Any]:
     }
 
 
+@mcp.resource(
+    "odoo://menu/{id}",
+    name="Odoo Menu",
+    description=(
+        "Menu metadata. Cache-backed placeholder (Option B, D-13): "
+        "use discovery_list_menus tool to enumerate menus."
+    ),
+    mime_type="application/json",
+)
+async def read_menu_resource(id: str) -> dict[str, Any]:
+    """Return a cache-backed placeholder for menu resources (Option B, D-13).
+
+    There is no get_menu_entry_from_cache() — catalog.py only introspects
+    ir.model, not ir.ui.menu.*. This resource always returns an error dict
+    directing agents to the discovery_list_menus tool.
+    """
+    return {
+        "error": "menu_not_found",
+        "id": id,
+        "hint": "call discovery_list_menus tool to list menus",
+    }
+
+
 # ---------------------------------------------------------------------------
 # skill:// file resources
 # ---------------------------------------------------------------------------

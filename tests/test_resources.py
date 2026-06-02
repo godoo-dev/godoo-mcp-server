@@ -184,6 +184,31 @@ async def test_action_resource_cold_cache(mcp_client: AsyncClient) -> None:
     )
 
 
+async def test_menu_resource_cold_cache(mcp_client: AsyncClient) -> None:
+    """D-13/RES-01: odoo://menu/1 Option B placeholder — returns menu_not_found error dict.
+
+    The odoo://menu/{id} resource is a warm-from-cache placeholder per D-13.
+    It always returns an error dict pointing agents to discovery_list_menus tool.
+    It must NOT raise a server exception.
+    """
+    resp = await mcp_client.post("/mcp", json=_resource_read_body("odoo://menu/1"))
+    assert resp.status_code == 200
+    body = _parse_sse_json(resp.text)
+    result = body.get("result", {})
+    assert isinstance(result, dict)
+    contents = result.get("contents", [])
+    assert isinstance(contents, list)
+    assert len(contents) > 0, f"Expected contents in resource response, got: {result}"
+    first = contents[0]
+    assert isinstance(first, dict)
+    text = first.get("text", "")
+    assert isinstance(text, str)
+    assert "menu_not_found" in text, f"Expected menu_not_found in response, got: {text}"
+    assert "discovery_list_menus" in text, (
+        f"Expected hint pointing to discovery_list_menus, got: {text}"
+    )
+
+
 async def test_startup_assertion_all_skill_paths_loaded() -> None:
     """SKILL-02: _SKILL_FILES contains all 4 declared paths with non-empty content.
 
