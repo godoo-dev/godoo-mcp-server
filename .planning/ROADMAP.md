@@ -54,12 +54,12 @@ Plans:
   3. A request with neither headers nor env vars returns a clear 401-style MCP error with a human-readable message
   4. Two concurrent requests with different header credentials each resolve to their own isolated credential set — no shared `OdooClient` instance, no cross-user bleed confirmed by test
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Core vertical slice: credential middleware + server + probe tool + unit tests (Wave 1)
+- [x] 02-01-PLAN.md — Core vertical slice: credential middleware + server + probe tool + unit tests (Wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -134,7 +134,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundations | 1/1 | Complete    | 2026-06-01 |
-| 2. Skeleton Server | 0/2 | Not started | - |
+| 2. Skeleton Server | 1/2 | In Progress|  |
 | 3. Core Primitives | 0/TBD | Not started | - |
 | 4. Full Surface + Catalog + ACL + Skills | 0/TBD | Not started | - |
 | 5. Package & Ship | 0/TBD | Not started | - |

@@ -14,14 +14,14 @@ REQ-ID format: `CATEGORY-NN`. Each requirement is user/agent-centric and testabl
 - [x] **FOUND-03**: CI runs lint + type-check + tests on the pinned Python version against the resolved godoo pin range.
 
 ### Transport (Wave 1)
-- [ ] **TRANS-01**: Server exposes a Streamable HTTP MCP endpoint in stateless mode (`stateless_http=True`), with no `Mcp-Session-Id` emitted.
-- [ ] **TRANS-02**: A local `quickdoo` (or generic MCP) client can connect, list tools, and call a tool end-to-end.
+- [x] **TRANS-01**: Server exposes a Streamable HTTP MCP endpoint in stateless mode (`stateless_http=True`), with no `Mcp-Session-Id` emitted.
+- [x] **TRANS-02**: A local `quickdoo` (or generic MCP) client can connect, list tools, and call a tool end-to-end.
 
 ### Authentication & credentials (Wave 1)
-- [ ] **AUTH-01**: Server resolves Odoo credentials from per-request `X-Odoo-Url`/`X-Odoo-Database`/`X-Odoo-Username`/`X-Odoo-Password` headers.
-- [ ] **AUTH-02**: When headers are absent, server falls back to `ODOO_URL`/`ODOO_DATABASE`/`ODOO_USERNAME`/`ODOO_PASSWORD` env vars; headers take precedence over env vars.
-- [ ] **AUTH-03**: Requests with no resolvable credentials fail with a clear 401-style MCP error.
-- [ ] **AUTH-04**: Each request builds a fresh Odoo client from its own resolved credentials; no client/connection is shared across requests or users.
+- [x] **AUTH-01**: Server resolves Odoo credentials from per-request `X-Odoo-Url`/`X-Odoo-Database`/`X-Odoo-Username`/`X-Odoo-Password` headers.
+- [x] **AUTH-02**: When headers are absent, server falls back to `ODOO_URL`/`ODOO_DATABASE`/`ODOO_USERNAME`/`ODOO_PASSWORD` env vars; headers take precedence over env vars.
+- [x] **AUTH-03**: Requests with no resolvable credentials fail with a clear 401-style MCP error.
+- [x] **AUTH-04**: Each request builds a fresh Odoo client from its own resolved credentials; no client/connection is shared across requests or users.
 
 ### Record primitives (Wave 1)
 - [ ] **REC-01**: Agent can search records of any model with a domain and return matching ids/records (`record.search`/`search_read`).
@@ -100,12 +100,12 @@ REQ-ID format: `CATEGORY-NN`. Each requirement is user/agent-centric and testabl
 | FOUND-01 | Phase 1 | Complete |
 | FOUND-02 | Phase 1 | Complete |
 | FOUND-03 | Phase 1 | Complete |
-| TRANS-01 | Phase 2 | Pending |
-| TRANS-02 | Phase 2 | Pending |
-| AUTH-01 | Phase 2 | Pending |
-| AUTH-02 | Phase 2 | Pending |
-| AUTH-03 | Phase 2 | Pending |
-| AUTH-04 | Phase 2 | Pending |
+| TRANS-01 | Phase 2 | Complete |
+| TRANS-02 | Phase 2 | Complete |
+| AUTH-01 | Phase 2 | Complete |
+| AUTH-02 | Phase 2 | Complete |
+| AUTH-03 | Phase 2 | Complete |
+| AUTH-04 | Phase 2 | Complete |
 | REC-01 | Phase 3 | Pending |
 | REC-02 | Phase 3 | Pending |
 | REC-03 | Phase 3 | Pending |
