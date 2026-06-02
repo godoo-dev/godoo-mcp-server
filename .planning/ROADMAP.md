@@ -19,6 +19,7 @@ is decided at Wave 3 planning entry.
 - [x] **Phase 2: Skeleton Server** - Stateless Streamable HTTP transport + per-request credential resolution (completed 2026-06-02)
 - [x] **Phase 3: Core Primitives** - Wave 1 tool surface end-to-end against a real Odoo instance (completed 2026-06-02)
 - [x] **Phase 4: Full Surface + Catalog + Skills** - Complete tool surface, catalog, resources, skill files (ACL delegated to Odoo per D-12) (completed 2026-06-02)
+- [ ] **Phase 4.1: E2E agent testing over real MCP transport** (INSERTED)
 - [ ] **Phase 5: Package & Ship** - pip + Docker packaging, threat-model README, npm deprecation
 - [ ] **Phase 6: Code Mode** - execute_odoo_code with OS-level sandboxed execution
 
@@ -124,6 +125,16 @@ Plans:
 
 - [x] 04-06-PLAN.md — Requirements revision (D-12 ACL-01/02 removal) + integration tests (Wave 3)
 
+### Phase 04.1: E2E agent testing over real MCP transport (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 4
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 04.1 to break down)
+
 ### Phase 5: Package & Ship
 
 **Goal**: godoo-mcp-server is installable from PyPI and runnable from a Docker image; the README documents the header-trust threat model; `@marcfargas/odoo-mcp` is formally deprecated pointing users here
@@ -163,15 +174,6 @@ Plans:
 | 2. Skeleton Server | 2/2 | Complete   | 2026-06-02 |
 | 3. Core Primitives | 4/4 | Complete    | 2026-06-02 |
 | 4. Full Surface + Catalog + Skills | 6/6 | Complete   | 2026-06-02 |
+| 4.1 E2E agent testing over real MCP transport | 0/TBD | Not planned | - |
 | 5. Package & Ship | 0/TBD | Not started | - |
 | 6. Code Mode | 0/TBD | Not started | - |
-
-### Phase 7: E2E agent testing over real MCP transport — a headless claude -p agent drives the godoo tools over the wire against a real Odoo, asserting both the agent result and the Odoo side-effect
-
-**Goal:** [To be planned]
-**Requirements**: TBD
-**Depends on:** Phase 6
-**Plans:** 0 plans
-
-Plans:
-- [ ] TBD (run /gsd-plan-phase 7 to break down)

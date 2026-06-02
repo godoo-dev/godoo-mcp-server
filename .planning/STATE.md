@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-last_updated: "2026-06-02T16:31:47.449Z"
+last_updated: "2026-06-02T17:22:39.046Z"
 last_activity: 2026-06-02
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 4
   total_plans: 13
   completed_plans: 13
-  percent: 67
+  percent: 57
 ---
 
 # Project State
@@ -102,7 +102,7 @@ None yet.
 
 ### Roadmap Evolution
 
-- Phase 7 added: E2E agent testing over real MCP transport (claude -p agent → live Streamable-HTTP server → real Odoo; HOST/PORT env support in __main__.py; opt-in @pytest.mark.e2e; first flow = one agent-driven write verified in Odoo)
+- Phase 4.1 inserted: E2E agent testing over real MCP transport (headless claude -p agent → live Streamable-HTTP server → real Odoo; HOST/PORT env support in __main__.py; opt-in @pytest.mark.e2e; first flow = one agent-driven write verified in Odoo)
 
 ## Deferred Items
 
