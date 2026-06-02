@@ -20,6 +20,7 @@ mcp = FastMCP(
 # Side-effect imports: register @mcp.tool decorators on the mcp instance above.
 # Must be AFTER mcp is defined. noqa: F401 (unused import), E402 (not at top of file).
 from godoo_mcp_server.tools import discovery as _disc_module  # noqa: F401, E402
+from godoo_mcp_server.tools import mail as _mail_module  # noqa: F401, E402
 from godoo_mcp_server.tools import records as _records_module  # noqa: F401, E402
 from godoo_mcp_server.tools import users as _users_module  # noqa: F401, E402
 
