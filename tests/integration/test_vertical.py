@@ -54,6 +54,7 @@ def _parse_sse_json(text: str) -> dict[str, Any]:
     return json.loads(text)  # type: ignore[return-value]
 
 
+@pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
 class TestVerticalSlice:
     """Full vertical slice + concurrency isolation tests against real Odoo."""

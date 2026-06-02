@@ -26,7 +26,7 @@ STANDARD_MCP_HEADERS: dict[str, str] = {
 }
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def odoo_harness() -> AsyncGenerator[StartedOdooContainer]:
     """Session-scoped real Odoo container — starts once, shared across all integration tests."""
     async with TestHarness(
@@ -50,7 +50,7 @@ async def _run_app_lifespan(
         await stop_event.wait()
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def mcp_app_with_lifespan() -> AsyncGenerator[object]:
     """Session-scoped ASGI app with lifespan started.
 
@@ -72,7 +72,7 @@ _SECOND_USER_LOGIN = "integration_test_user2"
 _SECOND_USER_PASSWORD = "TestPass123!"
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def second_user_credentials(odoo_harness: StartedOdooContainer) -> tuple[str, str]:
     """Create a second Odoo user once per session; return (login, password).
 
