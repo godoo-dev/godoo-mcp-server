@@ -6,18 +6,19 @@ godoo-mcp-server ships in six phases. Phase 1 resolves the blocking godoo depend
 conflict and scaffolds the project. Phase 2 wires the stateless Streamable HTTP transport
 with per-request credential resolution. Phase 3 delivers the Wave 1 tool surface (record
 primitives, discovery, whoami, error contract) and proves the end-to-end path against a
-real Odoo instance. Phase 4 completes the full 17-tool surface, catalog introspection,
-MCP resource descriptors, per-user ACL probing, and skill Markdown files as MCP Resources.
-Phase 5 packages and ships: pip + Docker, README threat-model documentation, and the
-`@marcfargas/odoo-mcp` deprecation notice. Phase 6 implements MCP Code Mode behind an
-OS-level sandbox whose isolation mechanism is decided at Wave 3 planning entry.
+real Odoo instance. Phase 4 completes the full tool surface, catalog introspection,
+MCP resource descriptors, and skill Markdown files as MCP Resources (ACL enforcement
+delegated to Odoo per D-12; no probe replication). Phase 5 packages and ships: pip + Docker,
+README threat-model documentation, and the `@marcfargas/odoo-mcp` deprecation notice.
+Phase 6 implements MCP Code Mode behind an OS-level sandbox whose isolation mechanism
+is decided at Wave 3 planning entry.
 
 ## Phases
 
 - [x] **Phase 1: Foundations** - Resolve godoo dependency conflict, scaffold package, wire CI (completed 2026-06-01)
 - [x] **Phase 2: Skeleton Server** - Stateless Streamable HTTP transport + per-request credential resolution (completed 2026-06-02)
 - [x] **Phase 3: Core Primitives** - Wave 1 tool surface end-to-end against a real Odoo instance (completed 2026-06-02)
-- [ ] **Phase 4: Full Surface + Catalog + ACL + Skills** - Complete 17-tool surface, catalog, resources, ACL, skill files
+- [ ] **Phase 4: Full Surface + Catalog + Skills** - Complete tool surface, catalog, resources, skill files (ACL delegated to Odoo per D-12)
 - [ ] **Phase 5: Package & Ship** - pip + Docker packaging, threat-model README, npm deprecation
 - [ ] **Phase 6: Code Mode** - execute_odoo_code with OS-level sandboxed execution
 
@@ -92,22 +93,36 @@ Plans:
 
 - [x] 03-04-PLAN.md — Integration + probe retirement: SC-3/SC-4/SC-5 integration tests, server.py swap, probe.py deleted (Wave 2)
 
-### Phase 4: Full Surface + Catalog + ACL + Skills
+### Phase 4: Full Surface + Catalog + Skills
 
-**Goal**: The complete 17-tool MCP surface is available; catalog introspection produces schema-hashed, cached MCP resource descriptors; per-user ACL filtering is applied with change notifications; skill Markdown files are served as MCP Resources; cross-user cache isolation is verified by a two-user integration test
+**Goal**: The complete tool surface is available; catalog introspection produces schema-hashed, cached MCP resource descriptors; skill Markdown files are served as MCP Resources; cross-user cache-key isolation is verified by a two-user integration test (ACL enforcement delegated fully to Odoo per D-12)
 **Mode:** mvp
 **Depends on**: Phase 3
-**Requirements**: MAIL-01, ACT-01, ATT-01, USER-02, DISC-03, CAT-01, CAT-02, RES-01, ACL-01, ACL-02, SKILL-01, SKILL-02
+**Requirements**: MAIL-01, ACT-01, ATT-01, USER-02, DISC-03, CAT-01, CAT-02, RES-01, SKILL-01, SKILL-02 (ACL-01/ACL-02 removed per D-12)
 **Success Criteria** (what must be TRUE):
 
   1. `mail.*` (post_message, log_note, list_messages, schedule_activity, list_activities, mark_activity_done), `action.*` (execute_action, list_actions), `attachments.*` (list, upload, download), `users.search_users`, and `discovery.list_menus` all respond to valid MCP tool calls
   2. Catalog introspection returns a snapshot with schema hash; a second call with the same schema hash is served from the in-process LRU+TTL cache (no Odoo RPC fired on hit); a schema change forces a cache miss
-  3. MCP resource descriptors for models are accessible at `odoo://model/{name}` URIs; skill Markdown files (`SKILL.md`, `mail/chatter.md`, `mail/activities.md`, `base/properties.md`) are readable as MCP Resources; `index.json` is generated at startup and startup assertion confirms every `.md` has an index entry and vice versa
-  4. Two-user isolation test: User A's ACL probe result (cached under User A's uid) is never returned for User B; catalog cache keys never include credentials (only `(url, database, schema_hash)`) — both confirmed by test
-  5. When the ACL probe result changes, the server emits `notifications/tools/list_changed` to the connected MCP client
+  3. MCP resource descriptors for models are accessible at `odoo://model/{name}` URIs; skill Markdown files (`SKILL.md`, `mail/chatter.md`, `mail/activities.md`, `base/properties.md`) are readable as MCP Resources; startup assertion confirms every `.md` has an index entry and vice versa
+  4. Two-user isolation test: Two concurrent users querying the same Odoo target share the same catalog cache key `(url, database, schema_hash)` — no credential component in the key; each user's whoami resolves to their own uid; cache-key isolation confirmed by unit test in test_catalog.py and integration test in test_vertical.py
 
-**Plans**: TBD
-**UI hint**: no
+**Plans:** 6 plans
+
+Plans:
+**Wave 1** *(all parallel — no file overlap)*
+
+- [ ] 04-01-PLAN.md — Mail tools slice: 6 mail tool handlers + unit tests (Wave 1)
+- [ ] 04-02-PLAN.md — Action + attachment tools slice + cachetools dep + unit tests (Wave 1)
+- [ ] 04-03-PLAN.md — Catalog service layer: schema-hash + TTLCache + lazy Lock + unit tests (Wave 1)
+- [ ] 04-04-PLAN.md — Users + discovery extensions (search_users, list_menus) + unit tests (Wave 1)
+
+**Wave 2** *(depends on Wave 1 completion)*
+
+- [ ] 04-05-PLAN.md — Resources + skills: resources.py + 4 skill .md files + server.py wiring + packaging + unit tests (Wave 2)
+
+**Wave 3** *(depends on Wave 2 completion)*
+
+- [ ] 04-06-PLAN.md — Requirements revision (D-12 ACL-01/02 removal) + integration tests (Wave 3)
 
 ### Phase 5: Package & Ship
 
@@ -147,6 +162,6 @@ Plans:
 | 1. Foundations | 1/1 | Complete    | 2026-06-01 |
 | 2. Skeleton Server | 2/2 | Complete   | 2026-06-02 |
 | 3. Core Primitives | 4/4 | Complete    | 2026-06-02 |
-| 4. Full Surface + Catalog + ACL + Skills | 0/TBD | Not started | - |
+| 4. Full Surface + Catalog + Skills | 0/6 | Not started | - |
 | 5. Package & Ship | 0/TBD | Not started | - |
 | 6. Code Mode | 0/TBD | Not started | - |
