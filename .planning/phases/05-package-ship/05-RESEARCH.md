@@ -483,27 +483,31 @@ Name, version, dependencies, LGPL-3.0 license, requires-python >=3.14 all correc
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Trusted Publisher environment name for testpypi job**
    - What we know: GitHub environment name in the workflow must match what is registered on test.pypi.org Trusted Publisher config.
    - What's unclear: Marc has not yet created a godoo-mcp-server project on PyPI or TestPyPI — both registry registrations must happen BEFORE the first workflow run.
    - Recommendation: Plan must include a Wave 0 task: "Register Trusted Publisher on PyPI and TestPyPI." This is a one-time manual step in the PyPI web UI, not automatable.
+   - **RESOLVED:** Environment names are `testpypi` (test.pypi.org) and `pypi` (pypi.org), per 05-04 publish.yml (`environment: testpypi` / `environment: pypi`) and 05-05 Task 1 manual checkpoint. Both must be registered in the PyPI web UI before the first workflow_dispatch run.
 
 2. **Docker image: GHCR vs Docker Hub (Claude's Discretion)**
    - What we know: GHCR works with GITHUB_TOKEN (no stored secrets), is free for public repos, has less discoverability. Docker Hub requires a stored PAT or DOCKER_USERNAME/TOKEN secrets.
    - What's unclear: Marc's preference. The repo is currently private; public flip is at v1.0.
    - Recommendation: GHCR as default (`ghcr.io/godoo-dev/godoo-mcp-server`). Document Docker Hub as an alternative in the workflow comments. Surface as a plan choice, not locked.
+   - **RESOLVED:** GHCR chosen per 05-02 Dockerfile and 05-04 publish.yml (`ghcr.io/${{ github.repository }}`). Uses `GITHUB_TOKEN` — no stored secret required.
 
 3. **Non-root user in Docker (Claude's Discretion)**
    - What we know: Security best practice is to run as non-root. Slim images support `groupadd`/`useradd`.
    - What's unclear: Marc did not specify; no external requirement forces it for self-hosted use.
    - Recommendation: Add non-root user (Pattern 3 above). Cost is two lines of Dockerfile. Risk of omitting: container runs as root, violates least-privilege.
+   - **RESOLVED:** Non-root `godoo` user added in 05-02 Dockerfile runtime stage (`groupadd -r godoo && useradd -r -d /app -g godoo -N godoo; USER godoo`).
 
 4. **CHANGELOG format (Claude's Discretion)**
    - What we know: No CHANGELOG.md exists. Keep-a-Changelog (keepachangelog.com) is the 2026 standard for Python FOSS projects.
    - What's unclear: Marc's preference.
    - Recommendation: Add a minimal CHANGELOG.md with a `[0.1.0] - Unreleased` section as part of Phase 5 docs work. Keep simple — does not require automation.
+   - **RESOLVED:** Minimal Keep-a-Changelog stub added per 05-03 Task 2 (`## [0.1.0] - Unreleased` section; date left as "Unreleased" until TestPyPI dry-run passes per D-01/D-02).
 
 ---
 
