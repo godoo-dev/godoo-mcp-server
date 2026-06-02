@@ -122,7 +122,7 @@ Plans:
 
 **Wave 3** *(depends on Wave 2 completion)*
 
-- [ ] 04-06-PLAN.md — Requirements revision (D-12 ACL-01/02 removal) + integration tests (Wave 3)
+- [x] 04-06-PLAN.md — Requirements revision (D-12 ACL-01/02 removal) + integration tests (Wave 3)
 
 ### Phase 5: Package & Ship
 
@@ -162,6 +162,6 @@ Plans:
 | 1. Foundations | 1/1 | Complete    | 2026-06-01 |
 | 2. Skeleton Server | 2/2 | Complete   | 2026-06-02 |
 | 3. Core Primitives | 4/4 | Complete    | 2026-06-02 |
-| 4. Full Surface + Catalog + Skills | 5/6 | Executing | - |
+| 4. Full Surface + Catalog + Skills | 6/6 | Complete | 2026-06-02 |
 | 5. Package & Ship | 0/TBD | Not started | - |
 | 6. Code Mode | 0/TBD | Not started | - |

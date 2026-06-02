@@ -48,11 +48,11 @@ REQ-ID format: `CATEGORY-NN`. Each requirement is user/agent-centric and testabl
 ### Catalog & resources (Wave 2)
 - [ ] **CAT-01**: Server introspects the Odoo catalog (models, fields, actions, menus) with a schema hash — re-implements `buildCatalogContent`.
 - [ ] **CAT-02**: Catalog is cached in-process (LRU + TTL) keyed by `(url, database, schema_hash)`, invalidated on schema-hash change; cold-start introspection runs in parallel.
-- [ ] **RES-01**: Catalog is transformed into MCP Resource descriptors with stable URI conventions (e.g. `odoo://{model}/record/{id}`) — re-implements `buildResourceDescriptors`.
+- [ ] **RES-01**: MCP resource descriptors at `odoo://model/{name}`, `odoo://action/{id}`, `odoo://menu/{id}` URIs (schema-level addressing only; no record-instance URIs — per D-13). Re-implements `buildResourceDescriptors` URI scheme from odoo-api-proxy.
 
 ### Per-user ACL (Wave 2)
-- [ ] **ACL-01**: Server probes per-user access rights (`check_access_rights`) and filters the exposed tool/resource set accordingly; results cached per `(url, database, uid)`, never re-probed per request.
-- [ ] **ACL-02**: On ACL-driven tool-set change, server emits `notifications/tools/list_changed`.
+- [REMOVED] **ACL-01**: ~~Server probes per-user access rights (`check_access_rights`) and filters the exposed tool/resource set accordingly; results cached per `(url, database, uid)`, never re-probed per request.~~ (Removed per D-12: ACL enforcement fully delegated to Odoo; every tool call runs as the requesting user's credentials; Odoo enforces access natively.)
+- [REMOVED] **ACL-02**: ~~On ACL-driven tool-set change, server emits `notifications/tools/list_changed`.~~ (Removed per D-12: no ACL-driven tool-surface filtering; no change notifications.)
 
 ### Skills as Resources (Wave 2)
 - [ ] **SKILL-01**: Skill Markdown files (SKILL.md, mail/chatter, mail/activities, base/properties) are served as MCP Resources, ported directly from `odoo-api-proxy`.
@@ -123,8 +123,8 @@ REQ-ID format: `CATEGORY-NN`. Each requirement is user/agent-centric and testabl
 | CAT-01 | Phase 4 | Pending |
 | CAT-02 | Phase 4 | Pending |
 | RES-01 | Phase 4 | Pending |
-| ACL-01 | Phase 4 | Pending |
-| ACL-02 | Phase 4 | Pending |
+| ACL-01 | Phase 4 | Removed (D-12) |
+| ACL-02 | Phase 4 | Removed (D-12) |
 | SKILL-01 | Phase 4 | Pending |
 | SKILL-02 | Phase 4 | Pending |
 | REL-01 | Phase 5 | Pending |
