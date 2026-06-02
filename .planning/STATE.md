@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-02T15:36:33.508Z"
-last_activity: 2026-06-02 -- Phase 04 planning complete
+last_updated: "2026-06-02T16:10:00Z"
+last_activity: 2026-06-02 -- Phase 04 Plan 01 complete (MAIL-01)
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 13
-  completed_plans: 7
-  percent: 50
+  completed_plans: 8
+  percent: 57
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** An AI agent can connect to the Streamable HTTP MCP server, authenticate as a real Odoo user (per-user credentials), and operate against any Odoo instance through a minimal set of raw Odoo primitives plus discoverable skill knowledge — with real per-user ACL enforcement.
-**Current focus:** Phase 4 — full surface + catalog + acl + skills
+**Current focus:** Phase 04 — full-surface-catalog-acl-skills
 
 ## Current Position
 
-Phase: 4
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-06-02 -- Phase 04 planning complete
+Phase: 04 (full-surface-catalog-acl-skills) — EXECUTING
+Plan: 2 of 6
+Status: Executing Phase 04 (Plan 01 complete)
+Last activity: 2026-06-02 -- Phase 04 Plan 01 complete (MAIL-01)
 
 Progress: [██████████] 100%
 
@@ -55,6 +55,7 @@ Progress: [██████████] 100%
 | Phase 02-skeleton-server P01 | 11min | 2 tasks | 10 files |
 | Phase 02-skeleton-server P02 | 9min | 2 tasks | 4 files |
 | Phase 03-core-primitives P04 | 12min | 2 tasks | 5 files |
+| Phase 04-full-surface P01 | 15min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,8 @@ Recent decisions affecting current work:
 - **Phase 01-01 executed:** Walking skeleton complete — all gates green locally (ruff, mypy --strict, pytest 1 passed). uv.lock committed.
 - [Phase ?]: D-13 completed: probe.py deleted, server.py import swapped in Plan 04 final task
 - [Phase ?]: D-02 confirmed: all 8 underscore tool names registered verbatim by fastmcp 3.3.x
+- [Phase 04-01]: cast() over type: ignore[return-value] for json.loads in test helpers — mypy --strict compliant under Python 3.14
+- [Phase 04-01]: A1/A2 mail method name assumptions (activity_schedule, action_feedback) documented inline — to be verified in Plan 06 integration tests
 
 ### Pending Todos
 
@@ -88,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-02T14:45:32.898Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-full-surface-catalog-acl-skills/04-CONTEXT.md
+Last session: 2026-06-02T16:10:00Z
+Stopped at: Phase 04 Plan 01 complete — 6 mail tools + tests committed
+Resume file: .planning/phases/04-full-surface-catalog-acl-skills/04-02-PLAN.md

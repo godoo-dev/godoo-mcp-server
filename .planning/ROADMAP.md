@@ -111,7 +111,7 @@ Plans:
 Plans:
 **Wave 1** *(all parallel — no file overlap)*
 
-- [ ] 04-01-PLAN.md — Mail tools slice: 6 mail tool handlers + unit tests (Wave 1)
+- [x] 04-01-PLAN.md — Mail tools slice: 6 mail tool handlers + unit tests (Wave 1)
 - [ ] 04-02-PLAN.md — Action + attachment tools slice + cachetools dep + unit tests (Wave 1)
 - [ ] 04-03-PLAN.md — Catalog service layer: schema-hash + TTLCache + lazy Lock + unit tests (Wave 1)
 - [ ] 04-04-PLAN.md — Users + discovery extensions (search_users, list_menus) + unit tests (Wave 1)
@@ -162,6 +162,6 @@ Plans:
 | 1. Foundations | 1/1 | Complete    | 2026-06-01 |
 | 2. Skeleton Server | 2/2 | Complete   | 2026-06-02 |
 | 3. Core Primitives | 4/4 | Complete    | 2026-06-02 |
-| 4. Full Surface + Catalog + Skills | 0/6 | Not started | - |
+| 4. Full Surface + Catalog + Skills | 1/6 | Executing | - |
 | 5. Package & Ship | 0/TBD | Not started | - |
 | 6. Code Mode | 0/TBD | Not started | - |

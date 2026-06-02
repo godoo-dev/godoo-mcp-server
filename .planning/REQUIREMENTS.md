@@ -39,7 +39,7 @@ REQ-ID format: `CATEGORY-NN`. Each requirement is user/agent-centric and testabl
 - [x] **ERR-01**: Odoo errors are surfaced to the agent as structured MCP errors carrying model/field/constraint detail sufficient for self-correction.
 
 ### Full tool surface (Wave 2)
-- [ ] **MAIL-01**: Mail/chatter capabilities exposed via `mail.*` tools (post message, log note, read chatter, manage activities/followers per the salvaged 17-tool surface).
+- [x] **MAIL-01**: Mail/chatter capabilities exposed via `mail.*` tools (post message, log note, read chatter, manage activities/followers per the salvaged 17-tool surface).
 - [ ] **ACT-01**: Server-side actions exposed via `action.*` tools.
 - [ ] **ATT-01**: Attachment capabilities exposed via `attachments.*` tools (list, fetch, create).
 - [ ] **USER-02**: Agent can search users (`users.search_users`).
@@ -115,7 +115,7 @@ REQ-ID format: `CATEGORY-NN`. Each requirement is user/agent-centric and testabl
 | DISC-02 | Phase 3 | Complete |
 | USER-01 | Phase 3 | Complete |
 | ERR-01 | Phase 3 | Complete |
-| MAIL-01 | Phase 4 | Pending |
+| MAIL-01 | Phase 4 | Complete |
 | ACT-01 | Phase 4 | Pending |
 | ATT-01 | Phase 4 | Pending |
 | USER-02 | Phase 4 | Pending |
