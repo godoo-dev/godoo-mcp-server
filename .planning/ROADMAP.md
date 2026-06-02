@@ -15,7 +15,7 @@ OS-level sandbox whose isolation mechanism is decided at Wave 3 planning entry.
 ## Phases
 
 - [x] **Phase 1: Foundations** - Resolve godoo dependency conflict, scaffold package, wire CI (completed 2026-06-01)
-- [ ] **Phase 2: Skeleton Server** - Stateless Streamable HTTP transport + per-request credential resolution
+- [x] **Phase 2: Skeleton Server** - Stateless Streamable HTTP transport + per-request credential resolution (completed 2026-06-02)
 - [ ] **Phase 3: Core Primitives** - Wave 1 tool surface end-to-end against a real Odoo instance
 - [ ] **Phase 4: Full Surface + Catalog + ACL + Skills** - Complete 17-tool surface, catalog, resources, ACL, skill files
 - [ ] **Phase 5: Package & Ship** - pip + Docker packaging, threat-model README, npm deprecation
@@ -54,7 +54,7 @@ Plans:
   3. A request with neither headers nor env vars returns a clear 401-style MCP error with a human-readable message
   4. Two concurrent requests with different header credentials each resolve to their own isolated credential set — no shared `OdooClient` instance, no cross-user bleed confirmed by test
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 **Wave 1**
@@ -63,7 +63,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02-PLAN.md — Integration test infrastructure + CI integration job (Wave 2)
+- [x] 02-02-PLAN.md — Integration test infrastructure + CI integration job (Wave 2)
 
 ### Phase 3: Core Primitives
 
@@ -134,7 +134,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundations | 1/1 | Complete    | 2026-06-01 |
-| 2. Skeleton Server | 1/2 | In Progress|  |
+| 2. Skeleton Server | 2/2 | Complete   | 2026-06-02 |
 | 3. Core Primitives | 0/TBD | Not started | - |
 | 4. Full Surface + Catalog + ACL + Skills | 0/TBD | Not started | - |
 | 5. Package & Ship | 0/TBD | Not started | - |
