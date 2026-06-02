@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_plan
-last_updated: 2026-06-02T20:24:13.329Z
+status: planning
+last_updated: "2026-06-02T21:31:34.337Z"
 last_activity: 2026-06-02
 progress:
   total_phases: 7
@@ -11,7 +11,6 @@ progress:
   total_plans: 16
   completed_plans: 16
   percent: 71
-stopped_at: Phase 04.1 complete (3/3) — ready to discuss Phase 5
 ---
 
 # Project State
@@ -119,8 +118,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-02T20:09:50.721Z
-Stopped at: Phase 4.1 context gathered
+Last session: 2026-06-02T21:31:34.322Z
+Stopped at: Phase 5 context gathered
 
 Post-verification gap closure (2026-06-02): odoo://menu/{id} MCP resource was missing from resources.py despite being required by RES-01 and D-13. Added read_menu_resource handler (Option B placeholder, same pattern as odoo://action/{id}) + test_menu_resource_cold_cache unit test. Suite now 63 tests; mypy --strict clean. Commit: 15fc473.
-Resume file: None
+Resume file: .planning/phases/05-package-ship/05-CONTEXT.md
