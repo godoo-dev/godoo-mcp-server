@@ -18,7 +18,7 @@ is decided at Wave 3 planning entry.
 - [x] **Phase 1: Foundations** - Resolve godoo dependency conflict, scaffold package, wire CI (completed 2026-06-01)
 - [x] **Phase 2: Skeleton Server** - Stateless Streamable HTTP transport + per-request credential resolution (completed 2026-06-02)
 - [x] **Phase 3: Core Primitives** - Wave 1 tool surface end-to-end against a real Odoo instance (completed 2026-06-02)
-- [ ] **Phase 4: Full Surface + Catalog + Skills** - Complete tool surface, catalog, resources, skill files (ACL delegated to Odoo per D-12)
+- [x] **Phase 4: Full Surface + Catalog + Skills** - Complete tool surface, catalog, resources, skill files (ACL delegated to Odoo per D-12) (completed 2026-06-02)
 - [ ] **Phase 5: Package & Ship** - pip + Docker packaging, threat-model README, npm deprecation
 - [ ] **Phase 6: Code Mode** - execute_odoo_code with OS-level sandboxed execution
 
@@ -106,7 +106,7 @@ Plans:
   3. MCP resource descriptors for models are accessible at `odoo://model/{name}` URIs; skill Markdown files (`SKILL.md`, `mail/chatter.md`, `mail/activities.md`, `base/properties.md`) are readable as MCP Resources; startup assertion confirms every `.md` has an index entry and vice versa
   4. Two-user isolation test: Two concurrent users querying the same Odoo target share the same catalog cache key `(url, database, schema_hash)` — no credential component in the key; each user's whoami resolves to their own uid; cache-key isolation confirmed by unit test in test_catalog.py and integration test in test_vertical.py
 
-**Plans:** 6 plans
+**Plans:** 6/6 plans complete
 
 Plans:
 **Wave 1** *(all parallel — no file overlap)*
@@ -162,6 +162,6 @@ Plans:
 | 1. Foundations | 1/1 | Complete    | 2026-06-01 |
 | 2. Skeleton Server | 2/2 | Complete   | 2026-06-02 |
 | 3. Core Primitives | 4/4 | Complete    | 2026-06-02 |
-| 4. Full Surface + Catalog + Skills | 6/6 | Complete | 2026-06-02 |
+| 4. Full Surface + Catalog + Skills | 6/6 | Complete   | 2026-06-02 |
 | 5. Package & Ship | 0/TBD | Not started | - |
 | 6. Code Mode | 0/TBD | Not started | - |

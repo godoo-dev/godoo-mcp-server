@@ -40,23 +40,23 @@ REQ-ID format: `CATEGORY-NN`. Each requirement is user/agent-centric and testabl
 
 ### Full tool surface (Wave 2)
 - [x] **MAIL-01**: Mail/chatter capabilities exposed via `mail.*` tools (post message, log note, read chatter, manage activities/followers per the salvaged 17-tool surface).
-- [ ] **ACT-01**: Server-side actions exposed via `action.*` tools.
-- [ ] **ATT-01**: Attachment capabilities exposed via `attachments.*` tools (list, fetch, create).
-- [ ] **USER-02**: Agent can search users (`users.search_users`).
-- [ ] **DISC-03**: Agent can list menus (`discovery.list_menus`).
+- [x] **ACT-01**: Server-side actions exposed via `action.*` tools.
+- [x] **ATT-01**: Attachment capabilities exposed via `attachments.*` tools (list, fetch, create).
+- [x] **USER-02**: Agent can search users (`users.search_users`).
+- [x] **DISC-03**: Agent can list menus (`discovery.list_menus`).
 
 ### Catalog & resources (Wave 2)
-- [ ] **CAT-01**: Server introspects the Odoo catalog (models, fields, actions, menus) with a schema hash — re-implements `buildCatalogContent`.
-- [ ] **CAT-02**: Catalog is cached in-process (LRU + TTL) keyed by `(url, database, schema_hash)`, invalidated on schema-hash change; cold-start introspection runs in parallel.
-- [ ] **RES-01**: MCP resource descriptors at `odoo://model/{name}`, `odoo://action/{id}`, `odoo://menu/{id}` URIs (schema-level addressing only; no record-instance URIs — per D-13). Re-implements `buildResourceDescriptors` URI scheme from odoo-api-proxy.
+- [x] **CAT-01**: Server introspects the Odoo catalog (models, fields, actions, menus) with a schema hash — re-implements `buildCatalogContent`.
+- [x] **CAT-02**: Catalog is cached in-process (LRU + TTL) keyed by `(url, database, schema_hash)`, invalidated on schema-hash change; cold-start introspection runs in parallel.
+- [x] **RES-01**: MCP resource descriptors at `odoo://model/{name}`, `odoo://action/{id}`, `odoo://menu/{id}` URIs (schema-level addressing only; no record-instance URIs — per D-13). Re-implements `buildResourceDescriptors` URI scheme from odoo-api-proxy.
 
 ### Per-user ACL (Wave 2)
 - [REMOVED] **ACL-01**: ~~Server probes per-user access rights (`check_access_rights`) and filters the exposed tool/resource set accordingly; results cached per `(url, database, uid)`, never re-probed per request.~~ (Removed per D-12: ACL enforcement fully delegated to Odoo; every tool call runs as the requesting user's credentials; Odoo enforces access natively.)
 - [REMOVED] **ACL-02**: ~~On ACL-driven tool-set change, server emits `notifications/tools/list_changed`.~~ (Removed per D-12: no ACL-driven tool-surface filtering; no change notifications.)
 
 ### Skills as Resources (Wave 2)
-- [ ] **SKILL-01**: Skill Markdown files (SKILL.md, mail/chatter, mail/activities, base/properties) are served as MCP Resources, ported directly from `odoo-api-proxy`.
-- [ ] **SKILL-02**: A discovery `index.json` is generated at startup from a filesystem glob; startup asserts every `.md` has an index entry and vice versa.
+- [x] **SKILL-01**: Skill Markdown files (SKILL.md, mail/chatter, mail/activities, base/properties) are served as MCP Resources, ported directly from `odoo-api-proxy`.
+- [x] **SKILL-02**: A discovery `index.json` is generated at startup from a filesystem glob; startup asserts every `.md` has an index entry and vice versa.
 
 ### MCP Code Mode (Wave 3)
 - [ ] **CODE-01**: Server exposes a single `execute_odoo_code` tool that runs agent-authored code against a typed Odoo client surface.
@@ -116,17 +116,17 @@ REQ-ID format: `CATEGORY-NN`. Each requirement is user/agent-centric and testabl
 | USER-01 | Phase 3 | Complete |
 | ERR-01 | Phase 3 | Complete |
 | MAIL-01 | Phase 4 | Complete |
-| ACT-01 | Phase 4 | Pending |
-| ATT-01 | Phase 4 | Pending |
-| USER-02 | Phase 4 | Pending |
-| DISC-03 | Phase 4 | Pending |
-| CAT-01 | Phase 4 | Pending |
-| CAT-02 | Phase 4 | Pending |
-| RES-01 | Phase 4 | Pending |
+| ACT-01 | Phase 4 | Complete |
+| ATT-01 | Phase 4 | Complete |
+| USER-02 | Phase 4 | Complete |
+| DISC-03 | Phase 4 | Complete |
+| CAT-01 | Phase 4 | Complete |
+| CAT-02 | Phase 4 | Complete |
+| RES-01 | Phase 4 | Complete |
 | ACL-01 | Phase 4 | Removed (D-12) |
 | ACL-02 | Phase 4 | Removed (D-12) |
-| SKILL-01 | Phase 4 | Pending |
-| SKILL-02 | Phase 4 | Pending |
+| SKILL-01 | Phase 4 | Complete |
+| SKILL-02 | Phase 4 | Complete |
 | REL-01 | Phase 5 | Pending |
 | REL-02 | Phase 5 | Pending |
 | REL-03 | Phase 5 | Pending |
