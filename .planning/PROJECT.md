@@ -41,22 +41,22 @@ enforcement.
 - [x] Single Python package scaffolded with `pyproject.toml`, `uv`/`hatchling`, LGPL-3.0 (FOUND-02)
 - [x] 3-gate CI (ruff / mypy / pytest) green on Python 3.14 (FOUND-03)
 
+**Wave 1 — Skeleton, credentials, core primitives** (Validated in Phases 2–3 + confirmed by Phase 4.1 live e2e 2026-06-02)
+
+- [x] Streamable HTTP MCP server skeleton, connectable by a local quickdoo instance (TRANS-01, TRANS-02)
+- [x] Credential resolution: per-user `X-Odoo-Url`, `X-Odoo-Database`,
+      `X-Odoo-Username`, `X-Odoo-Password` headers with env-var fallback
+      (`ODOO_URL`, `ODOO_DATABASE`, `ODOO_USERNAME`, `ODOO_PASSWORD`); headers take
+      precedence; no headers + no env vars = clear error (AUTH-01, AUTH-02, AUTH-03, AUTH-04)
+- [x] Minimal tool surface wired end-to-end via godoo client: `record.*` tools
+      (search_records, read_records, create_record, update_record, delete_record) +
+      `discovery.*` tools + `users.whoami` (REC-01 confirmed by live agent write-flow)
+- [x] One passing integration test confirming the end-to-end path against a real Odoo
+      instance
+
 ### Active
 
 <!-- Current scope. Building toward these. Organized by Wave. -->
-
-**Wave 1 — Skeleton, credentials, core primitives**
-
-- [ ] Streamable HTTP MCP server skeleton, connectable by a local quickdoo instance
-- [ ] Credential resolution: per-user `X-Odoo-Url`, `X-Odoo-Database`,
-      `X-Odoo-Username`, `X-Odoo-Password` headers with env-var fallback
-      (`ODOO_URL`, `ODOO_DATABASE`, `ODOO_USERNAME`, `ODOO_PASSWORD`); headers take
-      precedence; no headers + no env vars = clear error
-- [ ] Minimal tool surface wired end-to-end via godoo client: `record.*` tools
-      (search_records, read_records, create_record, update_record, delete_record) +
-      `discovery.*` tools + `users.whoami`
-- [ ] One passing integration test confirming the end-to-end path against a real Odoo
-      instance
 
 **Wave 2 — Full tool surface, catalog, ACL, skills**
 
@@ -231,4 +231,4 @@ PROJECT.md evolves throughout the project lifecycle via two mechanisms:
 
 ---
 
-*Last updated: 2026-06-02 — Phase 3 (Core Primitives) complete: all 8 raw Odoo MCP tools (users_whoami, record_search/read/create/update/delete, discovery_list_models/get_fields) live and verified against a real Odoo instance; probe retired. REC-01..05, DISC-01/02, USER-01, ERR-01 validated.*
+*Last updated: 2026-06-02 — Phase 4.1 (E2E agent testing over real MCP transport) complete: headless claude -p agent connected over Streamable-HTTP TCP, created a res.partner.category, Odoo search_read verify-back confirmed. TRANS-01, TRANS-02, AUTH-01..04, REC-01 confirmed by live e2e run.*
