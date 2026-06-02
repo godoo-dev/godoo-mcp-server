@@ -29,13 +29,13 @@ async def test_headers_resolve(mcp_client: AsyncClient) -> None:
     This is the critical A1 assumption test: verifies that scope["state"]["odoo_creds"]
     set by CredentialMiddleware is accessible via get_http_request().state in tool handlers.
     """
-    resp = await mcp_client.post("/mcp/", json=_TOOLS_LIST_BODY)
+    resp = await mcp_client.post("/mcp", json=_TOOLS_LIST_BODY)
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
 
 
 async def test_missing_creds_401(mcp_client_no_creds: AsyncClient) -> None:
     """AUTH-03: POST with no credentials returns HTTP 401 with all four missing fields."""
-    resp = await mcp_client_no_creds.post("/mcp/", json=_TOOLS_LIST_BODY)
+    resp = await mcp_client_no_creds.post("/mcp", json=_TOOLS_LIST_BODY)
     assert resp.status_code == 401
     body = resp.json()
     assert body["error"] == "missing_credentials"
@@ -72,7 +72,7 @@ async def test_partial_missing_creds(
                 # database/username/password intentionally absent
             },
         ) as client:
-            resp = await client.post("/mcp/", json=_TOOLS_LIST_BODY)
+            resp = await client.post("/mcp", json=_TOOLS_LIST_BODY)
 
     assert resp.status_code == 401
     body = resp.json()
@@ -101,7 +101,7 @@ async def test_env_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
             base_url="http://test",
             headers=STANDARD_MCP_HEADERS,  # no X-Odoo-* headers
         ) as client:
-            resp = await client.post("/mcp/", json=_TOOLS_LIST_BODY)
+            resp = await client.post("/mcp", json=_TOOLS_LIST_BODY)
 
     # Credentials resolved from env — not 401
     assert resp.status_code != 401, f"Expected non-401 (env fallback), got 401: {resp.text}"
@@ -132,7 +132,7 @@ async def test_header_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
                 **FAKE_CRED_HEADERS,  # headers win: x-odoo-url=http://odoo.test
             },
         ) as client:
-            resp = await client.post("/mcp/", json=_TOOLS_LIST_BODY)
+            resp = await client.post("/mcp", json=_TOOLS_LIST_BODY)
 
     # Headers present + all four creds resolved — middleware passes (non-401)
     # The actual Odoo URL used is from headers (http://odoo.test), not env (http://env.odoo)
