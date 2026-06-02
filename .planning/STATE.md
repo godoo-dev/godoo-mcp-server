@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-02T16:10:00Z"
-last_activity: 2026-06-02 -- Phase 04 Plan 01 complete (MAIL-01)
+last_updated: "2026-06-02T16:00:00Z"
+last_activity: 2026-06-02 -- Phase 04 Plan 02 complete (ACT-01 + ATT-01)
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 13
-  completed_plans: 8
+  completed_plans: 9
   percent: 57
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-06-01)
 ## Current Position
 
 Phase: 04 (full-surface-catalog-acl-skills) — EXECUTING
-Plan: 2 of 6
-Status: Executing Phase 04 (Plan 01 complete)
-Last activity: 2026-06-02 -- Phase 04 Plan 01 complete (MAIL-01)
+Plan: 3 of 6
+Status: Executing Phase 04 (Plan 02 complete)
+Last activity: 2026-06-02 -- Phase 04 Plan 02 complete (ACT-01 + ATT-01)
 
 Progress: [██████████] 100%
 
@@ -56,6 +56,7 @@ Progress: [██████████] 100%
 | Phase 02-skeleton-server P02 | 9min | 2 tasks | 4 files |
 | Phase 03-core-primitives P04 | 12min | 2 tasks | 5 files |
 | Phase 04-full-surface P01 | 15min | 2 tasks | 3 files |
+| Phase 04-full-surface P02 | 2min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,8 @@ Recent decisions affecting current work:
 - [Phase ?]: D-02 confirmed: all 8 underscore tool names registered verbatim by fastmcp 3.3.x
 - [Phase 04-01]: cast() over type: ignore[return-value] for json.loads in test helpers — mypy --strict compliant under Python 3.14
 - [Phase 04-01]: A1/A2 mail method name assumptions (activity_schedule, action_feedback) documented inline — to be verified in Plan 06 integration tests
+- [Phase 04-02]: action_list_actions unions ir.actions.server + ir.actions.act_window; domain applied independently to each model
+- [Phase 04-02]: attachments_download returns error dict on empty datas field (Pitfall 7 guard); cachetools>=7,<8 added as explicit project.dependencies for Plan 03
 
 ### Pending Todos
 
@@ -91,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-02T16:10:00Z
-Stopped at: Phase 04 Plan 01 complete — 6 mail tools + tests committed
-Resume file: .planning/phases/04-full-surface-catalog-acl-skills/04-02-PLAN.md
+Last session: 2026-06-02T16:00:00Z
+Stopped at: Phase 04 Plan 02 complete — 5 action/attachment tools + tests committed
+Resume file: .planning/phases/04-full-surface-catalog-acl-skills/04-03-PLAN.md
