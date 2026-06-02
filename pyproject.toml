@@ -54,3 +54,6 @@ addopts = "--tb=short -m 'not integration'"
 markers = [
     "integration: marks tests as requiring a live Odoo container (deselect with -m 'not integration')",
 ]
+
+[tool.uv_build]
+include = ["src/godoo_mcp_server/skills/**"]
