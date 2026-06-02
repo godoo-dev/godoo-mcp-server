@@ -39,3 +39,33 @@ jobs:
 
       - name: Test (pytest)
         run: uv run pytest --tb=short
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Cache Odoo snapshots
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/godoo-testcontainers
+          key: odoo-snapshot-${{ hashFiles('pyproject.toml') }}
+          restore-keys: odoo-snapshot-
+
+      - name: Install dependencies
+        run: uv sync --frozen --dev
+
+      - name: Run integration tests
+        run: uv run pytest -m integration --tb=short
