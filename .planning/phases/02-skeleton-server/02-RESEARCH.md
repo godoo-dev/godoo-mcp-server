@@ -784,7 +784,7 @@ Phase 2 is a greenfield addition to the skeleton — no rename, no migration. No
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **`scope["state"]` propagation end-to-end validation**
    - What we know: Starlette `Request.state` reads from `scope["state"]`; MCP SDK creates `Request(scope, receive)` from the ASGI scope.
