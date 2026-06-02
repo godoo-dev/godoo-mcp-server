@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 import pytest_asyncio
-from godoo.testcontainers import TestHarness
 from httpx import ASGITransport, AsyncClient
 
 from godoo_mcp_server.server import create_app
@@ -24,18 +23,6 @@ STANDARD_MCP_HEADERS: dict[str, str] = {
     "accept": "application/json, text/event-stream",
     "mcp-protocol-version": "2024-11-05",
 }
-
-
-@pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def odoo_harness() -> AsyncGenerator[StartedOdooContainer]:
-    """Session-scoped real Odoo container — starts once, shared across all integration tests."""
-    async with TestHarness(
-        modules=["base"],
-        snapshot=True,
-        database="test_odoo",
-        admin_password="admin",
-    ) as h:
-        yield h
 
 
 async def _run_app_lifespan(

@@ -6,6 +6,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 import pytest_asyncio
+from godoo.testcontainers import TestHarness
 from httpx import ASGITransport, AsyncClient
 
 from godoo_mcp_server.server import create_app
@@ -14,6 +15,8 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     import pytest
+
+    from godoo.testcontainers import StartedOdooContainer
 
 STANDARD_MCP_HEADERS: dict[str, str] = {
     "content-type": "application/json",
@@ -27,6 +30,18 @@ FAKE_CRED_HEADERS: dict[str, str] = {
     "x-odoo-username": "admin",
     "x-odoo-password": "admin",
 }
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def odoo_harness() -> AsyncGenerator[StartedOdooContainer]:
+    """Session-scoped real Odoo container — starts once, shared across all tests that need Docker."""
+    async with TestHarness(
+        modules=["base"],
+        snapshot=True,
+        database="test_odoo",
+        admin_password="admin",
+    ) as h:
+        yield h
 
 
 async def _make_client(
