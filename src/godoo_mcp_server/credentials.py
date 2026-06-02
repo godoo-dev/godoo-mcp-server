@@ -56,6 +56,12 @@ class CredentialMiddleware:
             await self._app(scope, receive, send)
             return
 
+        # /healthz is unauthenticated — bypass credential check.
+        # Also used as Docker HEALTHCHECK in Phase 5.
+        if scope.get("path") == "/healthz":
+            await self._app(scope, receive, send)
+            return
+
         raw_headers: dict[bytes, bytes] = {
             name.lower(): value for name, value in scope.get("headers", [])
         }

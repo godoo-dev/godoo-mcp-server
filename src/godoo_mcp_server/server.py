@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from fastmcp import FastMCP
 from starlette.middleware import Middleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from godoo_mcp_server.credentials import CredentialMiddleware
 
@@ -26,6 +28,12 @@ from godoo_mcp_server.tools import mail as _mail_module  # noqa: F401, E402
 from godoo_mcp_server.tools import records as _records_module  # noqa: F401, E402
 from godoo_mcp_server.tools import users as _users_module  # noqa: F401, E402
 from godoo_mcp_server import resources as _resources_module  # noqa: F401, E402
+
+
+@mcp.custom_route("/healthz", methods=["GET"])
+async def healthz(request: Request) -> JSONResponse:
+    """Unauthenticated health check — carve-out handled in CredentialMiddleware."""
+    return JSONResponse({"status": "ok"})
 
 
 def create_app() -> object:  # StarletteWithLifespan is a private fastmcp type; object is mypy-safe
