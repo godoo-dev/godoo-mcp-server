@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_plan
-last_updated: 2026-06-02T12:52:06.297Z
+status: planning
+last_updated: "2026-06-02T14:45:32.906Z"
 last_activity: 2026-06-02
 progress:
   total_phases: 6
@@ -11,7 +11,6 @@ progress:
   total_plans: 7
   completed_plans: 7
   percent: 50
-stopped_at: Phase 03 complete (4/4) — ready to discuss Phase 4
 ---
 
 # Project State
@@ -89,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-02T11:58:16.601Z
-Stopped at: Completed Phase 03-core-primitives Plan 04 (probe retirement + integration wiring)
-Resume file: None
+Last session: 2026-06-02T14:45:32.898Z
+Stopped at: Phase 4 context gathered
+Resume file: .planning/phases/04-full-surface-catalog-acl-skills/04-CONTEXT.md
