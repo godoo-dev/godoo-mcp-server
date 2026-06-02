@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-last_updated: "2026-06-02T18:21:09.756Z"
+status: executing
+last_updated: "2026-06-02T19:56:51.010Z"
 last_activity: 2026-06-02
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 16
+  completed_plans: 14
   percent: 57
 ---
 
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** An AI agent can connect to the Streamable HTTP MCP server, authenticate as a real Odoo user (per-user credentials), and operate against any Odoo instance through a minimal set of raw Odoo primitives plus discoverable skill knowledge — with real per-user ACL enforcement.
-**Current focus:** Phase 04 — full-surface-catalog-acl-skills
+**Current focus:** Phase 04.1 — e2e-agent-testing-over-real-mcp-transport
 
 ## Current Position
 
-Phase: 04 (full-surface-catalog-acl-skills) — EXECUTING
-Plan: 6 of 6
-Status: Phase complete — ready for verification
+Phase: 04.1 (e2e-agent-testing-over-real-mcp-transport) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
 Last activity: 2026-06-02
 
-Progress: [██████████] 100%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [██████████] 100%
 | Phase 04-full-surface P04 | 3min | 2 tasks | 4 files |
 | Phase 04-full-surface P05 | 15min | 2 tasks | 8 files |
 | Phase 04 P06 | 8min | 2 tasks | 3 files |
+| Phase 04.1 P01 | 12min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -112,8 +113,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-02T18:21:09.747Z
+Last session: 2026-06-02T19:56:51.001Z
 Stopped at: Phase 4.1 context gathered
 
 Post-verification gap closure (2026-06-02): odoo://menu/{id} MCP resource was missing from resources.py despite being required by RES-01 and D-13. Added read_menu_resource handler (Option B placeholder, same pattern as odoo://action/{id}) + test_menu_resource_cold_cache unit test. Suite now 63 tests; mypy --strict clean. Commit: 15fc473.
-Resume file: .planning/phases/04.1-e2e-agent-testing-over-real-mcp-transport/04.1-CONTEXT.md
+Resume file: None

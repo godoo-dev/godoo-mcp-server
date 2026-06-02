@@ -130,12 +130,12 @@ Plans:
 **Goal:** A headless claude -p agent drives godoo MCP tools over a real Streamable-HTTP TCP socket against a subprocess-launched server, creates a res.partner.category, and the test harness independently verifies the record exists in Odoo
 **Requirements**: TRANS-01, TRANS-02, AUTH-01, AUTH-02, AUTH-03, AUTH-04, REC-01
 **Depends on:** Phase 4
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 **Wave 1** *(no dependencies)*
 
-- [ ] 04.1-01-PLAN.md — Production enabling: HOST/PORT env support (__main__.py) + /healthz route (server.py + credentials.py) + e2e marker (pyproject.toml) (Wave 1)
+- [x] 04.1-01-PLAN.md — Production enabling: HOST/PORT env support (__main__.py) + /healthz route (server.py + credentials.py) + e2e marker (pyproject.toml) (Wave 1)
 
 **Wave 2** *(depends on Wave 1: /healthz + HOST/PORT must exist)*
 
@@ -184,6 +184,6 @@ Plans:
 | 2. Skeleton Server | 2/2 | Complete   | 2026-06-02 |
 | 3. Core Primitives | 4/4 | Complete    | 2026-06-02 |
 | 4. Full Surface + Catalog + Skills | 6/6 | Complete   | 2026-06-02 |
-| 4.1 E2E agent testing over real MCP transport | 0/3 | Planned | - |
+| 4.1 E2E agent testing over real MCP transport | 1/3 | In Progress|  |
 | 5. Package & Ship | 0/TBD | Not started | - |
 | 6. Code Mode | 0/TBD | Not started | - |
