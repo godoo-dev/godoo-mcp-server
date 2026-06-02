@@ -1,13 +1,10 @@
 ---
 phase: 03-core-primitives
 verified: 2026-06-02T13:00:00Z
-status: human_needed
-score: 4/5 must-haves verified (SC-3/SC-4/SC-5 authored+wired; live Odoo run unobserved)
+status: passed
+score: 5/5 must-haves verified (SC-3/SC-4/SC-5 observed green against live Odoo)
 overrides_applied: 0
-human_verification:
-  - test: "Run the integration test suite against a live Odoo container"
-    expected: "uv run pytest -m integration --tb=short exits 0; specifically test_record_crud_roundtrip, test_invalid_domain_structured_error, and test_credential_resolution_record_search all pass green"
-    why_human: "SC-3 (CRUD round-trip), SC-4 (invalid domain structured error), and SC-5 (credential path) each require a running Odoo container via godoo-testcontainers. The tests are fully authored and wired, but live execution against Odoo has not been observed in this orchestration session. Docker/CI run required to confirm SC-3/4/5."
+live_integration_run: "uv run pytest -m integration → 6/6 passed (test_tools_list, test_full_vertical, test_concurrent_isolation, test_record_crud_roundtrip, test_invalid_domain_structured_error, test_credential_resolution_record_search). Required a harness fix first: session-scoped async fixtures + TestVerticalSlice pinned to loop_scope=session (commit 51ce650) to resolve a pre-existing pytest-asyncio event-loop-scope deadlock that hung the suite after the first test."
 ---
 
 # Phase 03: Core Primitives Verification Report
