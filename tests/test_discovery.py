@@ -23,7 +23,7 @@ def _parse_sse_json(text: str) -> dict[str, object]:
     """
     for line in text.splitlines():
         if line.startswith("data:"):
-            return json.loads(line[len("data:"):].strip())  # type: ignore[return-value]
+            return json.loads(line[len("data:") :].strip())  # type: ignore[return-value]
     # Fallback: try parsing directly as JSON (for json_response=True mode)
     return json.loads(text)  # type: ignore[return-value]
 
