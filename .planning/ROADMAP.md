@@ -82,9 +82,14 @@ Plans:
 **Plans:** 4 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 03-01-PLAN.md — users_whoami slice: tool handler + unit error-boundary tests (Wave 1)
 - [ ] 03-02-PLAN.md — Record primitives slice: five record tools + unit error-boundary tests (Wave 1)
 - [ ] 03-03-PLAN.md — Discovery slice: discovery_list_models + discovery_get_fields + unit tests (Wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 03-04-PLAN.md — Integration + probe retirement: SC-3/SC-4/SC-5 integration tests, server.py swap, probe.py deleted (Wave 2)
 
 ### Phase 4: Full Surface + Catalog + ACL + Skills
