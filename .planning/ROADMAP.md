@@ -79,7 +79,13 @@ Plans:
   4. An intentionally invalid domain on `record.search` surfaces a structured MCP error carrying model name, field, and constraint detail — not a raw Python traceback
   5. One integration test in CI performs the full path (credential resolution → Odoo authenticate → record.search) against the pinned quickdoo/Odoo instance and passes green
 
-**Plans**: TBD
+**Plans:** 4 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — users_whoami slice: tool handler + unit error-boundary tests (Wave 1)
+- [ ] 03-02-PLAN.md — Record primitives slice: five record tools + unit error-boundary tests (Wave 1)
+- [ ] 03-03-PLAN.md — Discovery slice: discovery_list_models + discovery_get_fields + unit tests (Wave 1)
+- [ ] 03-04-PLAN.md — Integration + probe retirement: SC-3/SC-4/SC-5 integration tests, server.py swap, probe.py deleted (Wave 2)
 
 ### Phase 4: Full Surface + Catalog + ACL + Skills
 
