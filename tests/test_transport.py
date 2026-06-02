@@ -3,7 +3,7 @@
 Covers:
   TRANS-01: stateless_http=True suppresses Mcp-Session-Id header entirely
   TRANS-02: POST /mcp/ with tools/list returns HTTP 200 with valid MCP response
-            and the odoo_whoami tool appears in the tools list
+            and the users_whoami tool appears in the tools list
 
 Note on response format: MCP Streamable HTTP always returns text/event-stream (SSE) format
 when the client accepts both application/json and text/event-stream (as required by the protocol).
@@ -49,7 +49,7 @@ async def test_tools_list_200(mcp_client: AsyncClient) -> None:
 
 
 async def test_tools_list_contains_whoami(mcp_client: AsyncClient) -> None:
-    """TRANS-02: tools/list response body includes the odoo_whoami tool."""
+    """TRANS-02: tools/list response body includes the users_whoami tool."""
     resp = await mcp_client.post("/mcp", json=_TOOLS_LIST_BODY)
     assert resp.status_code == 200
 
@@ -59,8 +59,8 @@ async def test_tools_list_contains_whoami(mcp_client: AsyncClient) -> None:
     result = body.get("result", {})
     tools = result.get("tools", []) if isinstance(result, dict) else []
     tool_names = [t["name"] for t in tools if isinstance(t, dict)]
-    assert "odoo_whoami" in tool_names, (
-        f"odoo_whoami not found in tools list. Available: {tool_names}"
+    assert "users_whoami" in tool_names, (
+        f"users_whoami not found in tools list. Available: {tool_names}"
     )
 
 
