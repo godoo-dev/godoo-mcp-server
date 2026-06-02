@@ -118,7 +118,7 @@ Plans:
 
 **Wave 2** *(depends on Wave 1 completion)*
 
-- [ ] 04-05-PLAN.md — Resources + skills: resources.py + 4 skill .md files + server.py wiring + packaging + unit tests (Wave 2)
+- [x] 04-05-PLAN.md — Resources + skills: resources.py + 4 skill .md files + server.py wiring + packaging + unit tests (Wave 2)
 
 **Wave 3** *(depends on Wave 2 completion)*
 
@@ -162,6 +162,6 @@ Plans:
 | 1. Foundations | 1/1 | Complete    | 2026-06-01 |
 | 2. Skeleton Server | 2/2 | Complete   | 2026-06-02 |
 | 3. Core Primitives | 4/4 | Complete    | 2026-06-02 |
-| 4. Full Surface + Catalog + Skills | 4/6 | Executing | - |
+| 4. Full Surface + Catalog + Skills | 5/6 | Executing | - |
 | 5. Package & Ship | 0/TBD | Not started | - |
 | 6. Code Mode | 0/TBD | Not started | - |

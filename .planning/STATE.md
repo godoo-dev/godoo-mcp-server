@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-02T16:12:00Z"
-last_activity: 2026-06-02 -- Phase 04 Plan 04 complete (USER-02 + DISC-03)
+last_updated: "2026-06-02T16:30:00Z"
+last_activity: 2026-06-02 -- Phase 04 Plan 05 complete (RES-01 + SKILL-01 + SKILL-02)
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 13
-  completed_plans: 11
-  percent: 65
+  completed_plans: 12
+  percent: 71
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-06-01)
 ## Current Position
 
 Phase: 04 (full-surface-catalog-acl-skills) — EXECUTING
-Plan: 5 of 6
-Status: Executing Phase 04 (Plan 04 complete)
-Last activity: 2026-06-02 -- Phase 04 Plan 04 complete (USER-02 + DISC-03)
+Plan: 6 of 6
+Status: Executing Phase 04 (Plan 05 complete)
+Last activity: 2026-06-02 -- Phase 04 Plan 05 complete (RES-01 + SKILL-01 + SKILL-02)
 
 Progress: [██████████] 100%
 
@@ -59,6 +59,7 @@ Progress: [██████████] 100%
 | Phase 04-full-surface P02 | 2min | 2 tasks | 7 files |
 | Phase 04-full-surface P03 | 10min | 2 tasks | 3 files |
 | Phase 04-full-surface P04 | 3min | 2 tasks | 4 files |
+| Phase 04-full-surface P05 | 15min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,9 @@ Recent decisions affecting current work:
 - [Phase 04-03]: py.typed marker added — package declares itself typed; enables mypy on test importers without --ignore-missing-imports
 - [Phase 04-04]: Inline OdooClientConfig preserved in users.py and discovery.py (not _make_config) — per PATTERNS.md established pattern for these files
 - [Phase 04-04]: cast() applied to _parse_sse_json test helpers in test_users.py and test_discovery.py to fix pre-existing type: ignore[return-value] vs actual [no-any-return] error code mismatch
+- [Phase 04-05]: D-13 Option B adopted — odoo://action/{id} is a warm-from-cache placeholder; always returns action_not_found error dict directing agents to action_list_actions; no get_action_entry_from_cache() added to catalog.py (out of scope)
+- [Phase 04-05]: importlib.resources.files() traversal for wheel-safe skill loading — works in editable and installed package modes
+- [Phase 04-05]: Skill .md files are procedural guides only (D-14/PITFALL-13) — zero literal Odoo field identifiers; verified by grep
 
 ### Pending Todos
 
@@ -101,6 +105,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-02T16:12:00Z
-Stopped at: Phase 04 Plan 04 complete — users_search_users + discovery_list_menus + 4 new unit tests (54 total)
-Resume file: .planning/phases/04-full-surface-catalog-acl-skills/04-05-PLAN.md
+Last session: 2026-06-02T16:30:00Z
+Stopped at: Phase 04 Plan 05 complete — resources.py + 4 skill .md files + test_resources.py (62 tests total)
+Resume file: .planning/phases/04-full-surface-catalog-acl-skills/04-06-PLAN.md
