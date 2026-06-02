@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-02T19:56:51.010Z"
+last_updated: "2026-06-02T20:03:45.572Z"
 last_activity: 2026-06-02
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 16
-  completed_plans: 14
+  completed_plans: 15
   percent: 57
 ---
 
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-06-01)
 ## Current Position
 
 Phase: 04.1 (e2e-agent-testing-over-real-mcp-transport) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-06-02
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 94%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [█████████░] 88%
 | Phase 04-full-surface P05 | 15min | 2 tasks | 8 files |
 | Phase 04 P06 | 8min | 2 tasks | 3 files |
 | Phase 04.1 P01 | 12min | 2 tasks | 4 files |
+| Phase 04.1 P02 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,8 @@ Recent decisions affecting current work:
 - [Phase 04-05]: Skill .md files are procedural guides only (D-14/PITFALL-13) — zero literal Odoo field identifiers; verified by grep
 - [Phase ?]: D-12 formally closed: ACL-01/ACL-02 removed from REQUIREMENTS.md and traceability table; ACL enforcement fully delegated to Odoo
 - [Phase ?]: [Phase 04-06]: Activity integration tests deferred — A1/A2 mail method name assumptions (activity_schedule, action_feedback) must be verified against real Odoo container before test can be written
+- [Phase 04.1-02]: odoo_harness moved to tests/conftest.py (not re-export from integration) — pytest parent-conftest discovery for both integration/ and e2e/ siblings
+- [Phase 04.1-02]: server_process does NOT inject Odoo credentials into server env — credentials flow via X-Odoo-* headers in mcp_config_file (D-07)
 
 ### Pending Todos
 
@@ -113,7 +116,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-02T19:56:51.001Z
+Last session: 2026-06-02T20:03:45.563Z
 Stopped at: Phase 4.1 context gathered
 
 Post-verification gap closure (2026-06-02): odoo://menu/{id} MCP resource was missing from resources.py despite being required by RES-01 and D-13. Added read_menu_resource handler (Option B placeholder, same pattern as odoo://action/{id}) + test_menu_resource_cold_cache unit test. Suite now 63 tests; mypy --strict clean. Commit: 15fc473.
