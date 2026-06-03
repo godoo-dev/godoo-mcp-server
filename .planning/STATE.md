@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-03T06:31:56.295Z"
+last_updated: "2026-06-03T00:00:00.000Z"
 last_activity: 2026-06-03
 progress:
   total_phases: 7
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-06-01)
 ## Current Position
 
 Phase: 5
-Plan: 4 of 5 complete
-Status: Ready to execute
+Plan: 4 of 5 complete (05-05 deferred — manual gates, autonomous: false)
+Status: Autonomous scope complete & verified; blocked on deferred manual release-gate 05-05
 Last activity: 2026-06-03
 
-Progress: [██████████] 95%
+Progress: [██████████] 95% (autonomous scope done; 05-05 manual gates pending)
 
 ## Performance Metrics
 
@@ -105,7 +105,12 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-None yet.
+- **05-05 manual gates (deferred by explicit user decision, 2026-06-03):**
+  1. Configure Trusted Publisher on PyPI + TestPyPI; create GitHub environments `pypi` / `testpypi`
+  2. Trigger TestPyPI dry-run + verify `pip install --index-url https://test.pypi.org/simple/ godoo-mcp-server` — D-01 hard gate
+  3. Local Docker smoke-test (`docker build` + `docker run` env-var credentials → MCP tool call) — SC-2
+  4. `npm deprecate @marcfargas/odoo-mcp "..."` — D-11
+  Resume: re-run `/gsd-execute-phase 5` (or open 05-05-PLAN.md) after completing the human credential steps above.
 
 ### Blockers/Concerns
 
@@ -120,12 +125,13 @@ None yet.
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| Release gate | 05-05 manual gates: PyPI/TestPyPI Trusted Publisher config + GitHub envs; TestPyPI dry-run (D-01 hard gate); Docker smoke-test (SC-2); npm deprecate D-11 | Deferred — autonomous: false, requires human credentials | 2026-06-03 |
 
 ## Session Continuity
 
-Last session: 2026-06-03T06:31:56.288Z
-Stopped at: Completed Phase 05 Plan 01 (console script + TestPyPI index stanza)
+Last session: 2026-06-03
+Stopped at: Phase 05 autonomous scope complete and verified (plans 05-01..05-04 committed; gap-closure commit 896b66a removed ACL CHANGELOG entry per D-12). Verification: 11/12 must-haves PASS — see .planning/phases/05-package-ship/VERIFICATION.md. Plan 05-05 deferred by explicit user decision (manual release gates requiring human credentials).
 
 Post-verification gap closure (2026-06-02): odoo://menu/{id} MCP resource was missing from resources.py despite being required by RES-01 and D-13. Added read_menu_resource handler (Option B placeholder, same pattern as odoo://action/{id}) + test_menu_resource_cold_cache unit test. Suite now 63 tests; mypy --strict clean. Commit: 15fc473.
 Resume file: None
+Next: Complete 05-05 manual gates (see Pending Todos), then proceed to Phase 6 (Code Mode).

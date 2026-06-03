@@ -200,5 +200,5 @@ Plans:
 | 3. Core Primitives | 4/4 | Complete    | 2026-06-02 |
 | 4. Full Surface + Catalog + Skills | 6/6 | Complete   | 2026-06-02 |
 | 4.1 E2E agent testing over real MCP transport | 3/3 | Complete    | 2026-06-02 |
-| 5. Package & Ship | 4/5 | In Progress|  |
+| 5. Package & Ship | 4/5 | Blocked — 05-05 manual gates deferred (2026-06-03) |  |
 | 6. Code Mode | 0/TBD | Not started | - |
