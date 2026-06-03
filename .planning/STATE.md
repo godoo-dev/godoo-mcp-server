@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-02T22:28:32.591Z"
-last_activity: 2026-06-02 -- Phase 05 planning complete
+last_updated: "2026-06-03T06:21:02.395Z"
+last_activity: 2026-06-03 -- Phase 05 Plan 01 complete (console script + TestPyPI index)
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 21
-  completed_plans: 16
+  completed_plans: 17
   percent: 71
 ---
 
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-06-01)
 ## Current Position
 
 Phase: 5
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-06-02 -- Phase 05 planning complete
+Plan: 1 of 5 complete
+Status: Executing
+Last activity: 2026-06-03 -- Phase 05 Plan 01 complete (console script + TestPyPI index)
 
 Progress: [██████████] 100%
 
@@ -65,6 +65,7 @@ Progress: [██████████] 100%
 | Phase 04.1 P01 | 12min | 2 tasks | 4 files |
 | Phase 04.1 P02 | 2min | 2 tasks | 4 files |
 | Phase 04.1 P03 | 6min | 2 tasks | 2 files |
+| Phase 05 P01 | 8min | 2 tasks | 1 file |
 
 ## Accumulated Context
 
@@ -96,6 +97,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 04-06]: Activity integration tests deferred — A1/A2 mail method name assumptions (activity_schedule, action_feedback) must be verified against real Odoo container before test can be written
 - [Phase 04.1-02]: odoo_harness moved to tests/conftest.py (not re-export from integration) — pytest parent-conftest discovery for both integration/ and e2e/ siblings
 - [Phase 04.1-02]: server_process does NOT inject Odoo credentials into server env — credentials flow via X-Odoo-* headers in mcp_config_file (D-07)
+- [Phase 05-01]: D-09 console script godoo-mcp-server = godoo_mcp_server.__main__:main added to [project.scripts]
+- [Phase 05-01]: D-08 [[tool.uv.index]] testpypi stanza with explicit=true added; uv.lock unchanged (no new deps)
 
 ### Pending Todos
 
@@ -118,8 +121,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-06-02T21:31:34.322Z
-Stopped at: Phase 5 context gathered
+Last session: 2026-06-03T06:21:02.387Z
+Stopped at: Completed Phase 05 Plan 01 (console script + TestPyPI index stanza)
 
 Post-verification gap closure (2026-06-02): odoo://menu/{id} MCP resource was missing from resources.py despite being required by RES-01 and D-13. Added read_menu_resource handler (Option B placeholder, same pattern as odoo://action/{id}) + test_menu_resource_cold_cache unit test. Suite now 63 tests; mypy --strict clean. Commit: 15fc473.
-Resume file: .planning/phases/05-package-ship/05-CONTEXT.md
+Resume file: None
