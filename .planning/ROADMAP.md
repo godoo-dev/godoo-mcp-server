@@ -158,13 +158,13 @@ Plans:
   3. README contains a "Security: Header Trust Model" section explaining that direct exposure without a header-stripping proxy gives the caller full Odoo user impersonation power, and names `godoo-proxy` as the SaaS-safe guard
   4. `npm deprecate @marcfargas/odoo-mcp "Deprecated: use godoo-mcp-server (PyPI) as successor"` has been run and the deprecation message is visible on the npm registry
 
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 
 Plans:
 **Wave 1** *(all parallel — no file overlap)*
 
 - [x] 05-01-PLAN.md — pyproject.toml: console script entry (D-09) + TestPyPI index stanza (D-08) + uv.lock sync (Wave 1)
-- [ ] 05-02-PLAN.md — Dockerfile: multi-stage build from source, python:3.14-slim, HEALTHCHECK, non-root user (D-03/D-04/D-05/D-06) (Wave 1)
+- [x] 05-02-PLAN.md — Dockerfile: multi-stage build from source, python:3.14-slim, HEALTHCHECK, non-root user (D-03/D-04/D-05/D-06) (Wave 1)
 - [ ] 05-03-PLAN.md — README: Security Header Trust Model section + Installation + CHANGELOG stub (D-10/REL-04) (Wave 1)
 
 **Wave 2** *(depends on Wave 1: pyproject.toml [[tool.uv.index]] must exist before publish workflow is written)*
@@ -200,5 +200,5 @@ Plans:
 | 3. Core Primitives | 4/4 | Complete    | 2026-06-02 |
 | 4. Full Surface + Catalog + Skills | 6/6 | Complete   | 2026-06-02 |
 | 4.1 E2E agent testing over real MCP transport | 3/3 | Complete    | 2026-06-02 |
-| 5. Package & Ship | 1/5 | In Progress|  |
+| 5. Package & Ship | 2/5 | In Progress|  |
 | 6. Code Mode | 0/TBD | Not started | - |
