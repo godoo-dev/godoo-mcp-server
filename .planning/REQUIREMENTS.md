@@ -68,8 +68,8 @@ REQ-ID format: `CATEGORY-NN`. Each requirement is user/agent-centric and testabl
 ### Release & deployment (Wave 2 → ship)
 - [x] **REL-01**: Package is publishable to PyPI (`pip install`) once the godoo dependency is publicly resolvable.
 - [x] **REL-02**: A Docker image (`python:3.14-slim` base) builds and runs the server with parity to the pip install.
-- [ ] **REL-03**: `@marcfargas/odoo-mcp` (npm 0.1.4) is deprecated with a message pointing to godoo-mcp-server as successor.
-- [ ] **REL-04**: README documents the header-trust threat model — direct exposure without a header-stripping proxy means the caller chooses the Odoo user; godoo-proxy is the SaaS guard.
+- [x] **REL-03**: `@marcfargas/odoo-mcp` (npm 0.1.4) is deprecated with a message pointing to godoo-mcp-server as successor.
+- [x] **REL-04**: README documents the header-trust threat model — direct exposure without a header-stripping proxy means the caller chooses the Odoo user; godoo-proxy is the SaaS guard.
 
 ---
 
@@ -129,8 +129,8 @@ REQ-ID format: `CATEGORY-NN`. Each requirement is user/agent-centric and testabl
 | SKILL-02 | Phase 4 | Complete |
 | REL-01 | Phase 5 | Complete |
 | REL-02 | Phase 5 | Complete |
-| REL-03 | Phase 5 | Pending |
-| REL-04 | Phase 5 | Pending |
+| REL-03 | Phase 5 | Complete |
+| REL-04 | Phase 5 | Complete |
 | CODE-01 | Phase 6 | Pending |
 | CODE-02 | Phase 6 | Pending |
 | CODE-03 | Phase 6 | Pending |
