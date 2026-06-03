@@ -1,0 +1,133 @@
+# button = rehearse (workflow_dispatch → TestPyPI)
+# tag = ship (v* push → production PyPI + Docker → GHCR)
+#
+# Two-path routing (D-08):
+#   workflow_dispatch  → publish-testpypi only  (rehearse, OIDC environment: testpypi)
+#   push tags v*       → publish-pypi + publish-docker  (ship, OIDC environment: pypi)
+#
+# All PyPI publish jobs use Trusted Publisher (OIDC) — no stored API tokens (D-07).
+# Docker job pushes to GHCR using GITHUB_TOKEN — no stored Docker credentials.
+#
+# Prerequisites (one-time manual setup, see 05-05-PLAN.md):
+#   1. Register godoo-mcp-server project on pypi.org + test.pypi.org
+#   2. Configure Trusted Publisher on pypi.org: repo=godoo-dev/godoo-mcp-server,
+#      workflow=publish.yml, environment=pypi
+#   3. Configure Trusted Publisher on test.pypi.org: same fields, environment=testpypi
+#   4. Create GitHub environments "pypi" and "testpypi" in repository Settings
+
+name: Publish
+
+on:
+  workflow_dispatch:    # manual button → TestPyPI (rehearse)
+  push:
+    tags:
+      - "v*"            # git tag push → production PyPI + Docker (ship)
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
+
+      - name: Build distribution artifacts
+        run: uv build
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-testpypi:
+    # Runs only on manual workflow_dispatch (button = rehearse)
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: testpypi      # must match Trusted Publisher config on test.pypi.org
+    permissions:
+      id-token: write           # required for OIDC Trusted Publisher exchange
+    steps:
+      - uses: actions/checkout@v4   # required: uv publish --index reads pyproject.toml
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
+
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        run: uv publish --index testpypi --trusted-publishing always
+
+  publish-pypi:
+    # Runs only on v* tag push (tag = ship → production)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi            # must match Trusted Publisher config on pypi.org
+    permissions:
+      id-token: write             # required for OIDC Trusted Publisher exchange
+    steps:
+      - uses: actions/checkout@v4   # required: uv publish reads pyproject.toml
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
+
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing automatic
+
+  publish-docker:
+    # Runs only on v* tag push (tag = ship → GHCR)
+    # Depends on build completing (serializes jobs, avoids wasted parallel run if build fails).
+    # Does NOT consume the dist artifact — docker/build-push-action builds from source (D-03).
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write             # required for GHCR push via GITHUB_TOKEN
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
