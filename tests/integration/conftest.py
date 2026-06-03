@@ -65,13 +65,31 @@ async def second_user_credentials(odoo_harness: StartedOdooContainer) -> tuple[s
 
     AUTH-04: needed so test_concurrent_isolation can send two requests with distinct UIDs.
     """
+    # Resolve base.group_user and base.group_erp_manager via ir.model.data.
+    # group_erp_manager (Administration / Access Rights) is required for ir.model read access
+    # in Odoo's default ACL configuration.
+    imd_records = await odoo_harness.client.read(
+        "ir.model.data",
+        await odoo_harness.client.search(
+            "ir.model.data",
+            [
+                ["module", "=", "base"],
+                ["name", "in", ["group_user", "group_erp_manager"]],
+            ],
+        ),
+        ["name", "res_id"],
+    )
+    group_ids_by_name = {r["name"]: r["res_id"] for r in imd_records}
+    assert "group_user" in group_ids_by_name, "base.group_user not found"
+    assert "group_erp_manager" in group_ids_by_name, "base.group_erp_manager not found"
+
     user_id = await odoo_harness.client.create(
         "res.users",
         {
             "name": "Integration Test User 2",
             "login": _SECOND_USER_LOGIN,
             "password": _SECOND_USER_PASSWORD,
-            "groups_id": [(6, 0, [])],
+            "groups_id": [(6, 0, [group_ids_by_name["group_user"], group_ids_by_name["group_erp_manager"]])],
         },
     )
     assert isinstance(user_id, int) and user_id > 0

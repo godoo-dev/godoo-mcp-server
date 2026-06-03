@@ -36,7 +36,7 @@ FAKE_CRED_HEADERS: dict[str, str] = {
 async def odoo_harness() -> AsyncGenerator[StartedOdooContainer]:
     """Session-scoped real Odoo container — starts once, shared across all tests that need Docker."""
     async with TestHarness(
-        modules=["base"],
+        modules=["base", "mail"],
         snapshot=True,
         database="test_odoo",
         admin_password="admin",
