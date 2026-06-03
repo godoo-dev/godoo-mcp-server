@@ -7,10 +7,10 @@ last_updated: "2026-06-03T00:00:00.000Z"
 last_activity: 2026-06-03
 progress:
   total_phases: 7
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 21
-  completed_plans: 20
-  percent: 71
+  completed_plans: 21
+  percent: 76
 ---
 
 # Project State
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-01)
 
 **Core value:** An AI agent can connect to the Streamable HTTP MCP server, authenticate as a real Odoo user (per-user credentials), and operate against any Odoo instance through a minimal set of raw Odoo primitives plus discoverable skill knowledge — with real per-user ACL enforcement.
-**Current focus:** Phase 5 — package & ship
+**Current focus:** Phase 6 — Code Mode
 
 ## Current Position
 
-Phase: 5
-Plan: 4 of 5 complete (05-05 deferred — manual gates, autonomous: false)
-Status: Autonomous scope complete & verified; blocked on deferred manual release-gate 05-05
+Phase: 5 (complete) → Phase 6 (next)
+Plan: 5 of 5 complete — Phase 5 fully closed
+Status: Phase 5 complete; Phase 6 (Code Mode) is next — requires sandbox mechanism decision at phase entry
 Last activity: 2026-06-03
 
-Progress: [██████████] 95% (autonomous scope done; 05-05 manual gates pending)
+Progress: [██████████] 100% Phase 5 complete (all manual release gates executed and verified)
 
 ## Performance Metrics
 
@@ -69,6 +69,7 @@ Progress: [██████████] 95% (autonomous scope done; 05-05 man
 | Phase 05-package-ship P02 | 1min | 1 tasks | 1 files |
 | Phase 05-package-ship P03 | 2min | 2 tasks | 2 files |
 | Phase 05-package-ship P04 | 65s | 1 tasks | 1 files |
+| Phase 05-package-ship P05 | manual gate | 4 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -105,12 +106,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-- **05-05 manual gates (deferred by explicit user decision, 2026-06-03):**
-  1. Configure Trusted Publisher on PyPI + TestPyPI; create GitHub environments `pypi` / `testpypi`
-  2. Trigger TestPyPI dry-run + verify `pip install --index-url https://test.pypi.org/simple/ godoo-mcp-server` — D-01 hard gate
-  3. Local Docker smoke-test (`docker build` + `docker run` env-var credentials → MCP tool call) — SC-2
-  4. `npm deprecate @marcfargas/odoo-mcp "..."` — D-11
-  Resume: re-run `/gsd-execute-phase 5` (or open 05-05-PLAN.md) after completing the human credential steps above.
+- **Phase 5 fully complete (2026-06-03):** All 05-05 manual gates executed. D-01 TestPyPI hard gate cleared; SC-2 automated via tests/e2e/test_docker_image.py; REL-03/D-11 npm deprecation live. Phase 6 (Code Mode) is next.
 
 ### Blockers/Concerns
 
@@ -125,13 +121,11 @@ Recent decisions affecting current work:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| Release gate | 05-05 manual gates: PyPI/TestPyPI Trusted Publisher config + GitHub envs; TestPyPI dry-run (D-01 hard gate); Docker smoke-test (SC-2); npm deprecate D-11 | Deferred — autonomous: false, requires human credentials | 2026-06-03 |
+| Release gate | 05-05 manual gates: all four tasks complete | COMPLETE — 2026-06-03 | 2026-06-03 |
 
 ## Session Continuity
 
 Last session: 2026-06-03
-Stopped at: Phase 05 autonomous scope complete and verified (plans 05-01..05-04 committed; gap-closure commit 896b66a removed ACL CHANGELOG entry per D-12). Verification: 11/12 must-haves PASS — see .planning/phases/05-package-ship/VERIFICATION.md. Plan 05-05 deferred by explicit user decision (manual release gates requiring human credentials).
-
-Post-verification gap closure (2026-06-02): odoo://menu/{id} MCP resource was missing from resources.py despite being required by RES-01 and D-13. Added read_menu_resource handler (Option B placeholder, same pattern as odoo://action/{id}) + test_menu_resource_cold_cache unit test. Suite now 63 tests; mypy --strict clean. Commit: 15fc473.
+Stopped at: Phase 05 fully complete. All 05-05 manual release gates executed and verified: D-01 TestPyPI hard gate cleared (0.1.0 on TestPyPI, both --version commands confirmed); SC-2 automated via tests/e2e/test_docker_image.py (commit b223ffa, 2 e2e tests passing); REL-03/D-11 npm deprecation live on registry. VERIFICATION.md updated to 12/12 COMPLETE.
 Resume file: None
-Next: Complete 05-05 manual gates (see Pending Todos), then proceed to Phase 6 (Code Mode).
+Next: Phase 6 (Code Mode) — start with mandatory sandbox mechanism decision (subprocess+seccomp vs Docker sidecar); document in PROJECT.md Key Decisions before implementation.

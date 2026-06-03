@@ -20,7 +20,7 @@ is decided at Wave 3 planning entry.
 - [x] **Phase 3: Core Primitives** - Wave 1 tool surface end-to-end against a real Odoo instance (completed 2026-06-02)
 - [x] **Phase 4: Full Surface + Catalog + Skills** - Complete tool surface, catalog, resources, skill files (ACL delegated to Odoo per D-12) (completed 2026-06-02)
 - [x] **Phase 4.1: E2E agent testing over real MCP transport** (INSERTED) (completed 2026-06-02)
-- [ ] **Phase 5: Package & Ship** - pip + Docker packaging, threat-model README, npm deprecation
+- [x] **Phase 5: Package & Ship** - pip + Docker packaging, threat-model README, npm deprecation (completed 2026-06-03)
 - [ ] **Phase 6: Code Mode** - execute_odoo_code with OS-level sandboxed execution
 
 ## Phase Details
@@ -158,7 +158,7 @@ Plans:
   3. README contains a "Security: Header Trust Model" section explaining that direct exposure without a header-stripping proxy gives the caller full Odoo user impersonation power, and names `godoo-proxy` as the SaaS-safe guard
   4. `npm deprecate @marcfargas/odoo-mcp "Deprecated: use godoo-mcp-server (PyPI) as successor"` has been run and the deprecation message is visible on the npm registry
 
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 **Wave 1** *(all parallel — no file overlap)*
@@ -173,7 +173,7 @@ Plans:
 
 **Wave 3** *(manual gates — depends on Wave 2: publish.yml must be written)*
 
-- [ ] 05-05-PLAN.md — Manual gates: PyPI + TestPyPI Trusted Publisher config + GitHub environments; TestPyPI dry-run D-01 hard gate verification; npm deprecate D-11 (Wave 3, autonomous: false)
+- [x] 05-05-PLAN.md — Manual gates: PyPI + TestPyPI Trusted Publisher config + GitHub environments; TestPyPI dry-run D-01 hard gate verification; npm deprecate D-11 (Wave 3, autonomous: false)
 
 ### Phase 6: Code Mode
 
@@ -200,5 +200,5 @@ Plans:
 | 3. Core Primitives | 4/4 | Complete    | 2026-06-02 |
 | 4. Full Surface + Catalog + Skills | 6/6 | Complete   | 2026-06-02 |
 | 4.1 E2E agent testing over real MCP transport | 3/3 | Complete    | 2026-06-02 |
-| 5. Package & Ship | 4/5 | Blocked — 05-05 manual gates deferred (2026-06-03) |  |
+| 5. Package & Ship | 5/5 | Complete | 2026-06-03 |
 | 6. Code Mode | 0/TBD | Not started | - |
