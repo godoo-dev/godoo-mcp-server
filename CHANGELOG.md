@@ -22,7 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Skill Markdown files served as MCP Resources for agent discovery
 - Per-request credential resolution from `X-Odoo-*` request headers with `ODOO_*` environment variable fallback
 - In-process LRU + TTL catalog cache with schema-hash invalidation
-- Per-user ACL probe for curated tool filtering
 - Docker image based on `python:3.14-slim` (`ghcr.io/godoo-dev/godoo-mcp-server`)
 - `pip install godoo-mcp-server` installable package with `godoo-mcp-server` console script
 - `/healthz` unauthenticated health check endpoint
