@@ -8,11 +8,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context  # noqa: TC002
-from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_request
 from godoo.client.client import OdooClient, OdooClientConfig
 from godoo.client.errors import OdooError
 
+from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
 from godoo_mcp_server.server import mcp
 
 if TYPE_CHECKING:
@@ -46,7 +46,7 @@ async def action_list_actions(
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             server_actions = await client.search_read(
                 "ir.actions.server",
                 domain or [],
@@ -68,7 +68,7 @@ async def action_list_actions(
             combined: list[Any] = list(server_actions) + list(window_actions)
             return {"actions": combined, "count": len(combined)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(
@@ -84,12 +84,12 @@ async def action_execute_action(
     ctx: Context,
     action_id: int,
 ) -> dict[str, object]:
-    """Execute an ir.actions.server record by id. Calls client.call('ir.actions.server', 'run', ...)."""
+    """Execute an ir.actions.server record by id through its run method."""
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             result = await client.call("ir.actions.server", "run", [action_id], {})
             return {"result": result if result is not None else {}}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e, write_may_have_dispatched=True) from None

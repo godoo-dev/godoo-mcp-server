@@ -20,7 +20,17 @@ from tests.conftest import FAKE_CRED_HEADERS, STANDARD_MCP_HEADERS
 if TYPE_CHECKING:
     import pytest
 
-_TOOLS_LIST_BODY = {"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 1}
+_TOOLS_LIST_BODY = {
+    "jsonrpc": "2.0",
+    "method": "tools/list",
+    "params": {
+        "_meta": {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+        }
+    },
+    "id": 1,
+}
 
 
 async def test_headers_resolve(mcp_client: AsyncClient) -> None:
@@ -68,6 +78,7 @@ async def test_partial_missing_creds(
             base_url="http://test",
             headers={
                 **STANDARD_MCP_HEADERS,
+                "mcp-method": "tools/list",
                 "x-odoo-url": "http://odoo.test",
                 # database/username/password intentionally absent
             },

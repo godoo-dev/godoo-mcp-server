@@ -111,4 +111,9 @@ class CredentialMiddleware:
             username=username,
             password=password,
         )
-        await self._app(scope, receive, send)
+        try:
+            await self._app(scope, receive, send)
+        finally:
+            # The request scope can be retained by ASGI tooling after dispatch;
+            # release credential references on every exit, including cancellation.
+            scope["state"].pop("odoo_creds", None)

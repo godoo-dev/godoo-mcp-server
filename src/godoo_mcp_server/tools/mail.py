@@ -9,11 +9,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context  # noqa: TC002
-from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_request
 from godoo.client.client import OdooClient, OdooClientConfig
 from godoo.client.errors import OdooError
 
+from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
 from godoo_mcp_server.server import mcp
 
 if TYPE_CHECKING:
@@ -55,7 +55,7 @@ async def mail_post_message(
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             html_body = body if "<" in body else f"<p>{body}</p>"
             subtype_xmlid = "mail.mt_note" if is_internal else "mail.mt_comment"
             kwargs: dict[str, Any] = {
@@ -70,7 +70,7 @@ async def mail_post_message(
             result_id = result[0] if isinstance(result, list) else int(result)
             return {"message_id": result_id}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e, write_may_have_dispatched=True) from None
 
 
 @mcp.tool(
@@ -91,7 +91,7 @@ async def mail_log_note(
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             html_body = body if "<" in body else f"<p>{body}</p>"
             kwargs: dict[str, Any] = {
                 "body": html_body,
@@ -105,7 +105,7 @@ async def mail_log_note(
             result_id = result[0] if isinstance(result, list) else int(result)
             return {"message_id": result_id}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e, write_may_have_dispatched=True) from None
 
 
 @mcp.tool(
@@ -129,7 +129,7 @@ async def mail_list_messages(
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             domain: list[Any] = [["model", "=", model], ["res_id", "=", res_id]]
             records = await client.search_read(
                 "mail.message",
@@ -149,7 +149,7 @@ async def mail_list_messages(
             )
             return {"messages": records, "count": len(records)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(
@@ -179,7 +179,7 @@ async def mail_schedule_activity(
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             kwargs: dict[str, Any] = {
                 "activity_type_id": activity_type_id,
                 "date_deadline": date_deadline,
@@ -191,7 +191,7 @@ async def mail_schedule_activity(
             result = await client.call(model, "activity_schedule", [res_id], kwargs)
             return {"activity_id": int(result)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e, write_may_have_dispatched=True) from None
 
 
 @mcp.tool(
@@ -213,7 +213,7 @@ async def mail_list_activities(
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             domain: list[Any] = [["res_model", "=", model], ["res_id", "=", res_id]]
             records = await client.search_read(
                 "mail.activity",
@@ -231,7 +231,7 @@ async def mail_list_activities(
             )
             return {"activities": records, "count": len(records)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(
@@ -255,7 +255,7 @@ async def mail_mark_activity_done(
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             result = await client.call(
                 "mail.activity",
                 "action_feedback",
@@ -264,4 +264,4 @@ async def mail_mark_activity_done(
             )
             return {"success": bool(result)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e, write_may_have_dispatched=True) from None

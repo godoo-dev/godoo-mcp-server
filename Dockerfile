@@ -4,10 +4,10 @@
 # Source: docs.astral.sh/uv/guides/integration/docker/ + hynek.me/articles/docker-uv/
 
 # ---- builder ----
-FROM python:3.14-slim AS builder
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS builder
 
 # Copy uv binary from official image (T-05-12: pinned version for supply-chain integrity)
-COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.12.5@sha256:e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1 /uv /bin/uv
 
 WORKDIR /app
 
@@ -28,7 +28,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # ---- runtime ----
 # T-05-11: runtime stage copies only .venv — no uv binary, no source tree, no build cache.
-FROM python:3.14-slim
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
 
 WORKDIR /app
 

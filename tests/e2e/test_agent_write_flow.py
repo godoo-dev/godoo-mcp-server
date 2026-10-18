@@ -7,12 +7,13 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from godoo.testcontainers import StartedOdooContainer
 
 
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
 @pytest.mark.asyncio(loop_scope="session")
 async def test_agent_creates_partner_category(
     mcp_config_file: Path,
-    odoo_harness: "StartedOdooContainer",
+    odoo_harness: StartedOdooContainer,
 ) -> None:
     """D-01/D-02: agent creates res.partner.category via real MCP transport; Odoo verify-back
     confirms the record exists. Skips cleanly if prerequisites absent (D-08).
@@ -57,7 +58,7 @@ async def test_agent_creates_partner_category(
     # Step 4: Wait for completion with timeout (T-04.1-11 DoS mitigation)
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         pytest.fail("Agent subprocess timed out after 120s")
 
@@ -72,8 +73,7 @@ async def test_agent_creates_partner_category(
         combined = (error_text + stderr_text).lower()
         if any(kw in combined for kw in ("auth", "api key", "anthropic")):
             pytest.skip(
-                f"Claude auth unavailable — skipping e2e test (D-08). "
-                f"Error: {error_text!r}"
+                f"Claude auth unavailable — skipping e2e test (D-08). Error: {error_text!r}"
             )
 
     # Step 7: D-02 assertion — agent JSON result
