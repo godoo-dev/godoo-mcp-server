@@ -36,8 +36,8 @@ def _parse_sse_json(text: str) -> dict[str, object]:
     """
     for line in text.splitlines():
         if line.startswith("data:"):
-            return cast(dict[str, object], json.loads(line[len("data:") :].strip()))
-    return cast(dict[str, object], json.loads(text))
+            return cast("dict[str, object]", json.loads(line[len("data:") :].strip()))
+    return cast("dict[str, object]", json.loads(text))
 
 
 async def test_whoami_error_on_bad_creds(mcp_client: AsyncClient) -> None:
@@ -88,7 +88,7 @@ async def test_users_whoami_in_tool_list(mcp_client: AsyncClient) -> None:
 
 
 async def test_search_users_odoo_error(mcp_client: AsyncClient) -> None:
-    """USER-02 + ERR-01: fake credentials -> OdooAuthError -> isError=True for users_search_users."""
+    """Bad credentials produce a safe isError response for users_search_users."""
     body = {
         "jsonrpc": "2.0",
         "method": "tools/call",

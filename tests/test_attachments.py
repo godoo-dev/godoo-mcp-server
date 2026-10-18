@@ -32,9 +32,9 @@ def _parse_sse_json(text: str) -> dict[str, object]:
     """
     for line in text.splitlines():
         if line.startswith("data:"):
-            return cast(dict[str, object], json.loads(line[len("data:") :].strip()))
+            return cast("dict[str, object]", json.loads(line[len("data:") :].strip()))
     # Fallback: try parsing directly as JSON (for json_response=True mode)
-    return cast(dict[str, object], json.loads(text))
+    return cast("dict[str, object]", json.loads(text))
 
 
 def _tool_call_body(name: str, arguments: dict[str, object]) -> dict[str, object]:

@@ -1,36 +1,59 @@
 """Lazy schema-hashed catalog store with in-process LRU+TTL cache.
 
-Cache key: (url, database, schema_hash) — NEVER includes credentials.
+Cache key: (url, database, authenticated UID, schema_hash) — NEVER includes credentials.
 Schema hash: 3 write_date probes on ir.model / ir.model.fields / ir.module.module.
 """
 
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, NamedTuple, TypedDict, cast
 
 from cachetools import TTLCache
-from godoo.client.client import OdooClient
+
+if TYPE_CHECKING:
+    from godoo.client.client import OdooClient
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 _CATALOG_TTL = 3600  # seconds; 1 hour
-_CATALOG_MAXSIZE = 32  # max distinct (url, db, hash) tuples
+_CATALOG_MAXSIZE = 32  # max distinct cache entries
 
 # ---------------------------------------------------------------------------
 # Types
 # ---------------------------------------------------------------------------
 
-CacheKey = tuple[str, str, str]  # (url, database, schema_hash)
+
+class CacheKey(NamedTuple):
+    url: str
+    database: str
+    uid: int
+    schema_hash: str
+
+
+class CatalogModelRow(TypedDict):
+    model: str
+    name: str | bool
+    info: str | bool
+
+
+class CatalogSnapshotData(TypedDict):
+    schema_hash: str | None
+    models: list[CatalogModelRow]
+
+
+class CatalogSnapshot(CatalogSnapshotData):
+    cached: bool
+
 
 # ---------------------------------------------------------------------------
 # Module-level cache (sync TTLCache — safe to create at module level)
 # asyncio.Lock is NEVER created here — see _get_lock() below (Pitfall 2)
 # ---------------------------------------------------------------------------
 
-_catalog_cache: TTLCache[CacheKey, dict[str, Any]] = TTLCache(
+_catalog_cache: TTLCache[CacheKey, CatalogSnapshotData] = TTLCache(
     maxsize=_CATALOG_MAXSIZE, ttl=_CATALOG_TTL
 )
 
@@ -99,7 +122,7 @@ async def compute_schema_hash(client: OdooClient) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-async def _build_snapshot(client: OdooClient, schema_hash: str) -> dict[str, Any]:
+async def _build_snapshot(client: OdooClient, schema_hash: str) -> CatalogSnapshotData:
     """Build a catalog snapshot for the given schema_hash.
 
     Lazy: only introspects the core model set on first request to a target.
@@ -112,10 +135,13 @@ async def _build_snapshot(client: OdooClient, schema_hash: str) -> dict[str, Any
         "ir.attachment",
         "ir.ui.menu",
     ]
-    model_rows: list[dict[str, Any]] = await client.search_read(
-        "ir.model",
-        [["model", "in", _CORE_MODELS]],
-        fields=["model", "name", "info"],
+    model_rows = cast(
+        "list[CatalogModelRow]",
+        await client.search_read(
+            "ir.model",
+            [["model", "in", _CORE_MODELS]],
+            fields=["model", "name", "info"],
+        ),
     )
     return {"schema_hash": schema_hash, "models": model_rows}
 
@@ -125,13 +151,11 @@ async def _build_snapshot(client: OdooClient, schema_hash: str) -> dict[str, Any
 # ---------------------------------------------------------------------------
 
 
-async def get_catalog_snapshot(
-    client: OdooClient, url: str, database: str
-) -> dict[str, Any]:
+async def get_catalog_snapshot(client: OdooClient, url: str, database: str) -> CatalogSnapshot:
     """Get or build a catalog snapshot for the given Odoo target.
 
-    The cache key is (url, database, schema_hash) — credentials are NEVER part
-    of the key (D-12: credential-free cache key; T-04-03-01 mitigation).
+    The cache key includes the target, authenticated UID, and schema hash;
+    credentials are never included.
 
     Returns a dict with keys: schema_hash, models, cached.
     - cached=True  → returned from TTLCache (no Odoo RPC for the snapshot)
@@ -141,7 +165,14 @@ async def get_catalog_snapshot(
     if schema_hash is None:
         return {"schema_hash": None, "models": [], "cached": False}
 
-    key: CacheKey = (url, database, schema_hash)
+    session = client.get_session()
+    uid = session.uid if session is not None else None
+    if not isinstance(uid, int) or uid <= 0:
+        # A catalog built without an authenticated identity may reflect a
+        # different permission set, so return it only to this caller.
+        snapshot = await _build_snapshot(client, schema_hash)
+        return {**snapshot, "cached": False}
+    key = CacheKey(url=url, database=database, uid=uid, schema_hash=schema_hash)
     async with _get_lock():
         if key in _catalog_cache:
             return {**_catalog_cache[key], "cached": True}
@@ -150,17 +181,14 @@ async def get_catalog_snapshot(
         return {**snapshot, "cached": False}
 
 
-def get_model_entry_from_cache(model_name: str) -> dict[str, Any] | None:
-    """Return the first cached model entry matching model_name, or None.
-
-    Scans all current cache entries without calling Odoo.
-    Returns None if the cache is cold or the model has not been introspected yet.
-
-    Intended for use by resources.py — no OdooClient, no await needed.
-    """
-    for snapshot in _catalog_cache.values():
-        models: list[dict[str, Any]] = snapshot.get("models", [])
-        for entry in models:
-            if entry.get("model") == model_name:
+def get_model_entry_from_cache(
+    model_name: str, *, url: str, database: str, uid: int
+) -> CatalogModelRow | None:
+    """Return a cached model entry only for its exact Odoo user and target."""
+    for key, snapshot in _catalog_cache.items():
+        if (key.url, key.database, key.uid) != (url, database, uid):
+            continue
+        for entry in snapshot["models"]:
+            if entry["model"] == model_name:
                 return entry
     return None

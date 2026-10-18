@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context  # noqa: TC002
-from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_request
 from godoo.client.client import OdooClient, OdooClientConfig
 from godoo.client.errors import OdooError
 
+from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
 from godoo_mcp_server.server import mcp
 
 if TYPE_CHECKING:
@@ -43,7 +43,7 @@ async def discovery_list_models(ctx: Context) -> dict[str, object]:
         password=creds.password,
     )
     try:
-        async with OdooClient(config) as client:
+        async with managed_odoo_client(OdooClient(config)) as client:
             models = await client.search_read(
                 "ir.model",
                 [],
@@ -53,7 +53,7 @@ async def discovery_list_models(ctx: Context) -> dict[str, object]:
             )
             return {"models": models}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(
@@ -78,14 +78,14 @@ async def discovery_get_fields(
         password=creds.password,
     )
     try:
-        async with OdooClient(config) as client:
+        async with managed_odoo_client(OdooClient(config)) as client:
             fields: dict[str, Any] = await client.fields_get(
                 model,
                 attributes=attributes or _DEFAULT_FIELD_ATTRS,
             )
             return {"model": model, "fields": fields}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(
@@ -110,7 +110,7 @@ async def discovery_list_menus(
         password=creds.password,
     )
     try:
-        async with OdooClient(config) as client:
+        async with managed_odoo_client(OdooClient(config)) as client:
             menus = await client.search_read(
                 "ir.ui.menu",
                 domain or [],
@@ -120,4 +120,4 @@ async def discovery_list_menus(
             )
             return {"menus": menus, "count": len(menus)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None

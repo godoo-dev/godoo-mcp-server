@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context  # noqa: TC002  # required at runtime for pydantic schema generation
-from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_request
 from godoo.client.client import OdooClient, OdooClientConfig
 from godoo.client.errors import OdooError
 
+from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
 from godoo_mcp_server.server import mcp
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ async def users_whoami(ctx: Context) -> dict[str, object]:
         password=creds.password,
     )
     try:
-        async with OdooClient(config) as client:
+        async with managed_odoo_client(OdooClient(config)) as client:
             session = client.get_session()
             assert session is not None
             return {
@@ -43,7 +43,7 @@ async def users_whoami(ctx: Context) -> dict[str, object]:
                 "database": session.db,
             }
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(
@@ -70,7 +70,7 @@ async def users_search_users(
         password=creds.password,
     )
     try:
-        async with OdooClient(config) as client:
+        async with managed_odoo_client(OdooClient(config)) as client:
             users = await client.search_read(
                 "res.users",
                 domain or [],
@@ -80,4 +80,4 @@ async def users_search_users(
             )
             return {"users": users, "count": len(users)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None

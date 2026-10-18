@@ -4,7 +4,7 @@ SC-2/REL-02 — Phase 05-05 automated Docker smoke-test gate.
 
 Skips cleanly when:
   - `docker` CLI is not available on PATH (no daemon / not installed)
-  - `docker build` fails to reach a daemon
+  - Docker daemon is unavailable
 
 Does NOT require the claude CLI or a Claude API key.
 """
@@ -48,7 +48,9 @@ _MCP_PATH = "/mcp"
 _STANDARD_MCP_HEADERS: dict[str, str] = {
     "content-type": "application/json",
     "accept": "application/json, text/event-stream",
-    "mcp-protocol-version": "2024-11-05",
+    "mcp-protocol-version": "2026-07-28",
+    "mcp-method": "tools/call",
+    "mcp-name": "record_search",
 }
 
 # Repo root: two levels up from this file (tests/e2e/test_docker_image.py → repo root)
@@ -75,7 +77,7 @@ def _parse_sse_json(text: str) -> dict[str, Any]:
     """
     for line in text.splitlines():
         if line.startswith("data:"):
-            return dict(json.loads(line[len("data:"):].strip()))
+            return dict(json.loads(line[len("data:") :].strip()))
     return dict(json.loads(text))
 
 
@@ -110,10 +112,14 @@ def docker_image() -> Generator[str]:
 
     Skips the entire test module if:
       - `docker` is not on PATH
-      - `docker build` fails (e.g. no daemon, build error in Dockerfile)
+      - Docker CLI is missing or its daemon is unavailable
     """
     if shutil.which("docker") is None:
         pytest.skip("docker CLI not on PATH — skipping Docker smoke-test")
+
+    daemon = subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=30)
+    if daemon.returncode != 0:
+        pytest.skip(f"Docker daemon is unavailable: {daemon.stderr[-2000:]}")
 
     result = subprocess.run(
         ["docker", "build", "-t", _IMAGE_TAG, str(_REPO_ROOT)],
@@ -122,8 +128,8 @@ def docker_image() -> Generator[str]:
         timeout=600,  # Docker builds can be slow — allow up to 10 min
     )
     if result.returncode != 0:
-        pytest.skip(
-            f"docker build failed (no daemon or build error) — skipping Docker smoke-test.\n"
+        pytest.fail(
+            f"docker build failed — this is a test failure.\n"
             f"stdout: {result.stdout[-2000:]}\nstderr: {result.stderr[-2000:]}"
         )
 
@@ -198,7 +204,7 @@ def mcp_container(
                     r = client.get(f"{base_url}/healthz")
                 if r.status_code == 200:
                     break
-            except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError) as exc:
+            except httpx.TransportError as exc:
                 last_error = exc
             time.sleep(0.5)
         else:
@@ -266,6 +272,10 @@ def test_docker_image_record_search(
                 "domain": [],
                 "limit": 1,
             },
+            "_meta": {
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                "io.modelcontextprotocol/clientCapabilities": {},
+            },
         },
         "id": 1,
     }
@@ -285,9 +295,7 @@ def test_docker_image_record_search(
     result = body.get("result", {})
 
     assert isinstance(result, dict), f"Expected result dict, got: {result!r}"
-    assert result.get("isError") is not True, (
-        f"record_search returned isError=True: {result}"
-    )
+    assert result.get("isError") is not True, f"record_search returned isError=True: {result}"
 
     content = result.get("content", [])
     assert len(content) > 0, f"Empty content in record_search response: {result}"

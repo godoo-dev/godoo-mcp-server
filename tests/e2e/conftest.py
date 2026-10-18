@@ -9,7 +9,6 @@ import shutil
 import socket
 import subprocess
 import sys
-from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import httpx
@@ -18,6 +17,7 @@ import pytest_asyncio
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
+    from pathlib import Path
 
     from godoo.testcontainers import StartedOdooContainer
 
@@ -26,7 +26,7 @@ def _find_free_port() -> int:
     """Bind to port 0 on loopback to get an OS-assigned ephemeral port."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
-        return cast(int, sock.getsockname()[1])
+        return cast("int", sock.getsockname()[1])
 
 
 def _is_claude_available() -> bool:
@@ -34,11 +34,9 @@ def _is_claude_available() -> bool:
     if shutil.which("claude") is None:
         return False
     try:
-        result = subprocess.run(
-            ["claude", "--version"], capture_output=True, timeout=5
-        )
+        result = subprocess.run(["claude", "--version"], capture_output=True, timeout=5)
         return result.returncode == 0
-    except (subprocess.TimeoutExpired, OSError):
+    except subprocess.TimeoutExpired, OSError:
         return False
 
 
@@ -70,7 +68,7 @@ async def server_process(odoo_harness: StartedOdooContainer) -> AsyncGenerator[s
                 r = await client.get(f"{base_url}/healthz", timeout=2.0)
                 if r.status_code == 200:
                     break
-            except (httpx.ConnectError, httpx.TimeoutException):
+            except httpx.ConnectError, httpx.TimeoutException:
                 pass
             if asyncio.get_event_loop().time() > deadline:
                 proc.terminate()
@@ -82,7 +80,7 @@ async def server_process(odoo_harness: StartedOdooContainer) -> AsyncGenerator[s
         proc.terminate()
         try:
             await asyncio.wait_for(proc.wait(), timeout=10.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
 
 

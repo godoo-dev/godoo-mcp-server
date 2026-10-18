@@ -1,632 +1,268 @@
-"""Integration tests for the full vertical slice against a real Odoo container.
-
-Covers:
-  TRANS-02 (integration): tools/list + users_whoami against live Odoo
-  AUTH-04: Two concurrent requests with different credentials see different UIDs
-  SC-3: create → search → read → update → delete round-trip on res.partner.category
-  SC-4: invalid domain → OdooError → isError=True with Odoo message, no traceback
-  SC-5: credential resolution → Odoo authenticate → record_search path verified
-
-All tests are marked @pytest.mark.integration and are excluded from the default pytest run
-(addopts = "-m 'not integration'" in pyproject.toml). Run explicitly with:
-    uv run pytest -m integration --tb=short
-"""
+"""Product journeys through MCP against disposable Odoo 18 + PostgreSQL."""
 
 from __future__ import annotations
 
 import asyncio
 import base64
 import json
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any
 
+import httpx
 import pytest
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from godoo.testcontainers import StartedOdooContainer
-
-_MCP_PATH = "/mcp"
-
-_TOOLS_LIST_BODY: dict[str, Any] = {
-    "jsonrpc": "2.0",
-    "method": "tools/list",
-    "params": {},
-    "id": 1,
-}
-
-_WHOAMI_CALL_BODY: dict[str, Any] = {
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": {"name": "users_whoami", "arguments": {}},
-    "id": 2,
-}
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 
-def _parse_sse_json(text: str) -> dict[str, Any]:
-    """Parse JSON payload from an MCP SSE response body.
+async def _call(
+    client: httpx.AsyncClient,
+    name: str,
+    /,
+    *,
+    release_on_ping: asyncio.Event | None = None,
+    **arguments: Any,
+) -> dict[str, Any]:
+    async with client.stream(
+        "POST",
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {"name": name, "arguments": arguments},
+            "id": 1,
+        },
+    ) as response:
+        assert response.status_code == 200, await response.aread()
+        assert "mcp-session-id" not in response.headers
+        lines = []
+        async for line in response.aiter_lines():
+            lines.append(line)
+            if line.startswith(": ping") and release_on_ping is not None:
+                release_on_ping.set()
+    text = "\n".join(lines)
+    payload = next((line[5:].strip() for line in lines if line.startswith("data:")), text)
+    return json.loads(payload)["result"]
 
-    MCP Streamable HTTP response format:
-      event: message\\r\\ndata: {JSON}\\r\\n\\r\\n
-    """
-    for line in text.splitlines():
-        if line.startswith("data:"):
-            return json.loads(line[len("data:") :].strip())  # type: ignore[return-value]
-    return json.loads(text)  # type: ignore[return-value]
+
+def _value(result: dict[str, Any]) -> Any:
+    assert result.get("isError") is not True, result
+    return json.loads(result["content"][0]["text"])
 
 
-@pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.integration
-class TestVerticalSlice:
-    """Full vertical slice + concurrency isolation tests against real Odoo."""
+def _events(log: str, **matching: str) -> list[dict[str, Any]]:
+    events = [json.loads(line) for line in log.splitlines() if line.startswith("{")]
+    return [event for event in events if all(event.get(k) == v for k, v in matching.items())]
 
-    async def test_tools_list(
-        self,
-        mcp_client_factory: Callable[..., Any],
-        odoo_harness: StartedOdooContainer,
-    ) -> None:
-        """TRANS-02: tools/list returns HTTP 200 with valid MCP response against real Odoo."""
-        client = mcp_client_factory(
-            url=odoo_harness.url,
-            database=odoo_harness._database,
-            username="admin",
-            password="admin",
+
+async def _assert_user_isolation(clients: Any, credentials: tuple[str, str], **kwargs: Any) -> None:
+    async with (
+        clients(**kwargs) as admin,
+        clients(username=credentials[0], password=credentials[1], **kwargs) as portal,
+    ):
+        identities = await asyncio.gather(
+            _call(admin, "users_whoami"), _call(portal, "users_whoami")
         )
-        async with client:
-            resp = await client.post(_MCP_PATH, json=_TOOLS_LIST_BODY)
-        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
-        body = _parse_sse_json(resp.text)
-        result = body.get("result", {})
-        tools = result.get("tools", []) if isinstance(result, dict) else []
-        tool_names = [t["name"] for t in tools if isinstance(t, dict)]
-        assert "users_whoami" in tool_names, (
-            f"users_whoami not in tools list. Available: {tool_names}"
+        assert _value(identities[0])["uid"] != _value(identities[1])["uid"]
+        assert _value(identities[1])["username"] == credentials[0]
+        allowed, denied = await asyncio.gather(
+            _call(admin, "record_search", model="res.users"),
+            _call(portal, "record_search", model="res.users"),
         )
+        assert allowed.get("isError") is not True
+        assert denied.get("isError") is True
 
-    async def test_full_vertical(
-        self,
-        mcp_client_factory: Callable[..., Any],
-        odoo_harness: StartedOdooContainer,
-    ) -> None:
-        """TRANS-02: full connect -> tools/list -> tools/call -> real Odoo RPC path."""
-        client = mcp_client_factory(
-            url=odoo_harness.url,
-            database=odoo_harness._database,
-            username="admin",
-            password="admin",
+
+async def _assert_single_write(reply: Any, harness: Any) -> None:
+    assert reply.writes == 1
+    assert len(reply.ids) == 1
+    rows = await harness.client.search_read(
+        "res.partner.category", [["name", "=", reply.marker]], fields=["id", "name"]
+    )
+    assert rows == [{"id": reply.ids[0], "name": reply.marker}]
+
+
+async def test_tools_list(odoo_mcp: httpx.AsyncClient) -> None:
+    response = await odoo_mcp.post(
+        "/mcp", json={"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 1}
+    )
+    assert response.status_code == 200
+    assert "users_whoami" in response.text
+
+
+async def test_identity(odoo_mcp: httpx.AsyncClient) -> None:
+    identity = _value(await _call(odoo_mcp, "users_whoami"))
+    assert identity["uid"] > 0
+    assert identity["database"] == "test_odoo"
+    assert identity["username"] == "admin"
+
+
+async def test_record_crud(odoo_mcp: httpx.AsyncClient) -> None:
+    model = "res.partner.category"
+    created = _value(await _call(odoo_mcp, "record_create", model=model, values={"name": "CRUD"}))
+    record_id = created["id"]
+    assert record_id > 0
+    found = _value(
+        await _call(odoo_mcp, "record_search", model=model, domain=[["id", "=", record_id]])
+    )
+    assert [row["id"] for row in found["records"]] == [record_id]
+    read = _value(await _call(odoo_mcp, "record_read", model=model, ids=[record_id]))
+    assert read["records"][0]["name"] == "CRUD"
+    updated = _value(
+        await _call(
+            odoo_mcp, "record_update", model=model, ids=[record_id], values={"name": "Updated"}
         )
-        async with client:
-            resp = await client.post(_MCP_PATH, json=_WHOAMI_CALL_BODY)
-        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
-        body = _parse_sse_json(resp.text)
-        result_text = body["result"]["content"][0]["text"]
-        result = json.loads(result_text)
-        assert "uid" in result, f"'uid' missing from users_whoami response: {result}"
-        assert isinstance(result["uid"], int), f"uid is not int: {result['uid']!r}"
-        assert result["uid"] > 0, f"uid must be positive, got: {result['uid']}"
-        assert "database" in result, f"'database' missing from users_whoami response: {result}"
-        assert "username" in result, f"'username' missing from users_whoami response: {result}"
-        assert isinstance(result["username"], str), f"username is not str: {result['username']!r}"
+    )
+    assert updated["success"] is True
+    read = _value(await _call(odoo_mcp, "record_read", model=model, ids=[record_id]))
+    assert read["records"][0]["name"] == "Updated"
+    assert _value(await _call(odoo_mcp, "record_delete", model=model, ids=[record_id]))["success"]
+    remaining = _value(
+        await _call(odoo_mcp, "record_search", model=model, domain=[["id", "=", record_id]])
+    )
+    assert remaining["records"] == []
 
-    async def test_concurrent_isolation(
-        self,
-        mcp_client_factory: Callable[..., Any],
-        odoo_harness: StartedOdooContainer,
-        second_user_credentials: tuple[str, str],
-    ) -> None:
-        """AUTH-04: Two concurrent requests with different creds return different UIDs."""
-        user2_login, user2_password = second_user_credentials
 
-        async def _call_whoami(username: str, password: str) -> dict[str, Any]:
-            client = mcp_client_factory(
-                url=odoo_harness.url,
-                database=odoo_harness._database,
-                username=username,
-                password=password,
-            )
-            async with client:
-                resp = await client.post(_MCP_PATH, json=_WHOAMI_CALL_BODY)
-            assert resp.status_code == 200, (
-                f"whoami failed for {username!r}: {resp.status_code}: {resp.text}"
-            )
-            body = _parse_sse_json(resp.text)
-            result_text = body["result"]["content"][0]["text"]
-            return json.loads(result_text)  # type: ignore[return-value]
+async def test_invalid_domain(odoo_mcp: httpx.AsyncClient) -> None:
+    result = await _call(
+        odoo_mcp,
+        "record_search",
+        model="res.partner",
+        domain=[["nonexistent_field_xyz", "=", "value"]],
+    )
+    assert result["isError"] is True
+    error = result["content"][0]["text"]
+    assert error and "Traceback" not in error
+    assert "nonexistent_field_xyz" not in error
 
-        results = await asyncio.gather(
-            _call_whoami("admin", "admin"),
-            _call_whoami(user2_login, user2_password),
+
+async def test_mail(odoo_mcp: httpx.AsyncClient) -> None:
+    result = _value(
+        await _call(
+            odoo_mcp, "mail_post_message", model="res.partner", res_id=1, body="MCP integration"
         )
-        assert results[0]["uid"] != results[1]["uid"], (
-            f"Cross-user bleed: both requests returned uid={results[0]['uid']}"
-        )
+    )
+    assert result["message_id"] > 0
 
-    async def test_record_crud_roundtrip(
-        self,
-        mcp_client_factory: Callable[..., Any],
-        odoo_harness: StartedOdooContainer,
-    ) -> None:
-        """SC-3: create → search → read → update → delete round-trip on res.partner.category."""
-        client = mcp_client_factory(
-            url=odoo_harness.url,
-            database=odoo_harness._database,
-            username="admin",
-            password="admin",
-        )
-        async with client:
-            # create
-            resp = await client.post(
-                _MCP_PATH,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "tools/call",
-                    "params": {
-                        "name": "record_create",
-                        "arguments": {
-                            "model": "res.partner.category",
-                            "values": {"name": "Phase3TestTag"},
-                        },
-                    },
-                    "id": 10,
-                },
-            )
-            assert resp.status_code == 200
-            create_body = _parse_sse_json(resp.text)
-            assert create_body.get("result", {}).get("isError") is not True, (
-                f"record_create returned isError: {create_body}"
-            )
-            create_result = json.loads(create_body["result"]["content"][0]["text"])
-            assert "id" in create_result, (
-                f"'id' missing from record_create response: {create_result}"
-            )
-            new_id: int = create_result["id"]
-            assert isinstance(new_id, int) and new_id > 0, (
-                f"Expected positive int id, got: {new_id!r}"
-            )
 
-            # search by name
-            resp = await client.post(
-                _MCP_PATH,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "tools/call",
-                    "params": {
-                        "name": "record_search",
-                        "arguments": {
-                            "model": "res.partner.category",
-                            "domain": [["name", "=", "Phase3TestTag"]],
-                        },
-                    },
-                    "id": 11,
-                },
-            )
-            assert resp.status_code == 200
-            search_body = _parse_sse_json(resp.text)
-            assert search_body.get("result", {}).get("isError") is not True, (
-                f"record_search returned isError: {search_body}"
-            )
-            search_result = json.loads(search_body["result"]["content"][0]["text"])
-            assert "records" in search_result, f"'records' missing: {search_result}"
-            assert len(search_result["records"]) > 0, "Expected non-empty search result"
-            assert search_result["records"][0]["id"] == new_id, (
-                f"Search did not return created record id={new_id}"
-            )
+async def test_attachments(odoo_mcp: httpx.AsyncClient) -> None:
+    payload = base64.b64encode(b"MCP attachment roundtrip").decode()
+    uploaded = _value(
+        await _call(
+            odoo_mcp,
+            "attachments_upload",
+            name="integration.txt",
+            content_base64=payload,
+            res_model="res.partner",
+            res_id=1,
+            mimetype="text/plain",
+        )
+    )
+    downloaded = _value(await _call(odoo_mcp, "attachments_download", attachment_id=uploaded["id"]))
+    assert downloaded["content_base64"] == payload
+    assert downloaded["size_bytes"] == len(base64.b64decode(payload))
 
-            # read by id
-            resp = await client.post(
-                _MCP_PATH,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "tools/call",
-                    "params": {
-                        "name": "record_read",
-                        "arguments": {
-                            "model": "res.partner.category",
-                            "ids": [new_id],
-                        },
-                    },
-                    "id": 12,
-                },
-            )
-            assert resp.status_code == 200
-            read_body = _parse_sse_json(resp.text)
-            assert read_body.get("result", {}).get("isError") is not True, (
-                f"record_read returned isError: {read_body}"
-            )
-            read_result = json.loads(read_body["result"]["content"][0]["text"])
-            assert "records" in read_result, f"'records' missing: {read_result}"
-            assert isinstance(read_result["records"], list), "records must be a list"
 
-            # update name
-            resp = await client.post(
-                _MCP_PATH,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "tools/call",
-                    "params": {
-                        "name": "record_update",
-                        "arguments": {
-                            "model": "res.partner.category",
-                            "ids": [new_id],
-                            "values": {"name": "Phase3TestTagUpdated"},
-                        },
-                    },
-                    "id": 13,
-                },
-            )
-            assert resp.status_code == 200
-            update_body = _parse_sse_json(resp.text)
-            assert update_body.get("result", {}).get("isError") is not True, (
-                f"record_update returned isError: {update_body}"
-            )
-            update_result = json.loads(update_body["result"]["content"][0]["text"])
-            assert update_result.get("success") is True, (
-                f"record_update did not return success=True: {update_result}"
-            )
+async def test_identity_acl_and_safe_telemetry(
+    odoo_clients: Any, second_user_credentials: tuple[str, str], caplog: pytest.LogCaptureFixture
+) -> None:
+    await _assert_user_isolation(odoo_clients, second_user_credentials)
+    async with odoo_clients(
+        username=second_user_credentials[0], password=second_user_credentials[1]
+    ) as portal:
+        denied = await _call(
+            portal, "record_create", model="res.partner.category", values={"name": "must be denied"}
+        )
+    assert denied["isError"] is True
+    events = _events(
+        "\n".join(r.getMessage() for r in caplog.records if r.name == "godoo_mcp_server.telemetry"),
+        event="tool_call_finished",
+    )
+    assert {e["category"] for e in events} >= {"success", "access_denied"}
+    assert second_user_credentials[1] not in caplog.text
+    assert "must be denied" not in caplog.text
 
-            # delete
-            resp = await client.post(
-                _MCP_PATH,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "tools/call",
-                    "params": {
-                        "name": "record_delete",
-                        "arguments": {
-                            "model": "res.partner.category",
-                            "ids": [new_id],
-                        },
-                    },
-                    "id": 14,
-                },
-            )
-            assert resp.status_code == 200
-            delete_body = _parse_sse_json(resp.text)
-            assert delete_body.get("result", {}).get("isError") is not True, (
-                f"record_delete returned isError: {delete_body}"
-            )
-            delete_result = json.loads(delete_body["result"]["content"][0]["text"])
-            assert delete_result.get("success") is True, (
-                f"record_delete did not return success=True: {delete_result}"
-            )
 
-            # verify deletion — final search should return empty
-            resp = await client.post(
-                _MCP_PATH,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "tools/call",
-                    "params": {
-                        "name": "record_search",
-                        "arguments": {
-                            "model": "res.partner.category",
-                            "domain": [["id", "=", new_id]],
-                        },
-                    },
-                    "id": 15,
-                },
-            )
-            assert resp.status_code == 200
-            final_search_body = _parse_sse_json(resp.text)
-            final_search_result = json.loads(final_search_body["result"]["content"][0]["text"])
-            records_after_delete = final_search_result.get("records", [])
-            assert len(records_after_delete) == 0, (
-                f"Record id={new_id} still found after delete: {records_after_delete}"
-            )
+async def test_process_credentials_and_correlation(
+    mcp_process: Any, odoo_clients: Any, second_user_credentials: tuple[str, str]
+) -> None:
+    url, log = mcp_process
+    request_id = "0084a94f-b12b-4019-b5e6-62f6fe71ef10"
+    await _assert_user_isolation(odoo_clients, second_user_credentials, server_url=url)
+    async with odoo_clients(server_url=url) as client:
+        client.headers["x-request-id"] = request_id
+        await _call(client, "users_whoami")
+    assert _events(log.read_text(), event="tool_call_finished", request_id=request_id)
+    assert second_user_credentials[1] not in log.read_text()
+    assert "res.users" not in log.read_text()
 
-    async def test_invalid_domain_structured_error(
-        self,
-        mcp_client_factory: Callable[..., Any],
-        odoo_harness: StartedOdooContainer,
-    ) -> None:
-        """SC-4: invalid domain → OdooError → isError=True with Odoo message, no traceback."""
-        client = mcp_client_factory(
-            url=odoo_harness.url,
-            database=odoo_harness._database,
-            username="admin",
-            password="admin",
-        )
-        async with client:
-            resp = await client.post(
-                _MCP_PATH,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "tools/call",
-                    "params": {
-                        "name": "record_search",
-                        "arguments": {
-                            "model": "res.partner",
-                            "domain": [["nonexistent_field_xyz", "=", "value"]],
-                        },
-                    },
-                    "id": 20,
-                },
-            )
-        assert resp.status_code == 200
-        body = _parse_sse_json(resp.text)
-        result = body.get("result", {})
-        assert isinstance(result, dict)
-        assert result.get("isError") is True, (
-            f"Expected isError=True for invalid domain, got: {result}"
-        )
-        content = result.get("content", [])
-        assert len(content) > 0, "Expected non-empty content in error response"
-        error_text = content[0].get("text", "")
-        assert isinstance(error_text, str) and len(error_text) > 0, (
-            "Expected non-empty error text string"
-        )
-        assert "Traceback" not in error_text, (
-            f"Python traceback leaked into error response: {error_text[:200]}"
-        )
 
-    async def test_credential_resolution_record_search(
-        self,
-        mcp_client_factory: Callable[..., Any],
-        odoo_harness: StartedOdooContainer,
-    ) -> None:
-        """SC-5: credential resolution → Odoo authenticate → record_search path verified."""
-        client = mcp_client_factory(
-            url=odoo_harness.url,
-            database=odoo_harness._database,
-            username="admin",
-            password="admin",
+@pytest.mark.parametrize("interruption", ["drop", "disconnect", "kill", "keepalive"])
+async def test_committed_write_is_not_replayed(
+    interruption: str,
+    mcp_process_factory: Any,
+    odoo_clients: Any,
+    odoo_reply: Any,
+    odoo_harness: Any,
+    second_user_credentials: tuple[str, str],
+) -> None:
+    """Interrupt only the reply from real Odoo; independently read back the committed row."""
+    reply = odoo_reply
+    reply.drop = interruption == "drop"
+    request_id = "0084a94f-b12b-4019-b5e6-62f6fe71ef10"
+    async with (
+        mcp_process_factory() as (url, log, process),
+        odoo_clients(server_url=url, url=reply.url, timeout=35) as client,
+    ):
+        client.headers["x-request-id"] = request_id
+        call = asyncio.create_task(
+            _call(
+                client,
+                "record_create",
+                release_on_ping=reply.release if interruption == "keepalive" else None,
+                model="res.partner.category",
+                values={"name": reply.marker},
+            )
         )
-        async with client:
-            resp = await client.post(
-                _MCP_PATH,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "tools/call",
-                    "params": {
-                        "name": "record_search",
-                        "arguments": {
-                            "model": "res.partner",
-                            "domain": [["active", "=", True]],
-                            "limit": 5,
-                        },
-                    },
-                    "id": 30,
-                },
-            )
-        assert resp.status_code == 200
-        body = _parse_sse_json(resp.text)
-        result = body.get("result", {})
-        assert isinstance(result, dict)
-        assert result.get("isError") is not True, (
-            f"record_search with valid credentials returned isError: {result}"
-        )
-        search_result = json.loads(result["content"][0]["text"])
-        assert "records" in search_result, f"'records' key missing from response: {search_result}"
-        assert isinstance(search_result["records"], list), (
-            f"'records' is not a list: {search_result['records']!r}"
-        )
-
-    async def test_mail_post_message_integration(
-        self,
-        mcp_client_factory: Callable[..., Any],
-        odoo_harness: StartedOdooContainer,
-    ) -> None:
-        """MAIL-01: mail_post_message round-trip against real Odoo returns message_id as int."""
-        client = mcp_client_factory(
-            url=odoo_harness.url,
-            database=odoo_harness._database,
-            username="admin",
-            password="admin",
-        )
-        async with client:
-            resp = await client.post(
-                _MCP_PATH,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "tools/call",
-                    "params": {
-                        "name": "mail_post_message",
-                        "arguments": {
-                            "model": "res.partner",
-                            "res_id": 1,
-                            "body": "Integration test from godoo-mcp-server Phase 4",
-                            "is_internal": False,
-                        },
-                    },
-                    "id": 40,
-                },
-            )
-        assert resp.status_code == 200, (
-            f"Expected 200, got {resp.status_code}: {resp.text}"
-        )
-        body = _parse_sse_json(resp.text)
-        result = body.get("result", {})
-        assert isinstance(result, dict)
-        assert result.get("isError") is not True, (
-            f"mail_post_message returned isError: {result}"
-        )
-        parsed = json.loads(result["content"][0]["text"])
-        assert "message_id" in parsed, (
-            f"'message_id' missing from mail_post_message response: {parsed}"
-        )
-        assert isinstance(parsed["message_id"], int), (
-            f"message_id is not int: {parsed['message_id']!r}"
-        )
-
-    async def test_attachments_roundtrip_integration(
-        self,
-        mcp_client_factory: Callable[..., Any],
-        odoo_harness: StartedOdooContainer,
-    ) -> None:
-        """ATT-01: attachments_upload then attachments_download round-trip — content matches."""
-        payload_bytes = b"godoo-mcp-server phase4 attachment test"
-        payload_b64 = base64.b64encode(payload_bytes).decode()
-
-        client = mcp_client_factory(
-            url=odoo_harness.url,
-            database=odoo_harness._database,
-            username="admin",
-            password="admin",
-        )
-        async with client:
-            # Upload
-            upload_resp = await client.post(
-                _MCP_PATH,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "tools/call",
-                    "params": {
-                        "name": "attachments_upload",
-                        "arguments": {
-                            "name": "phase4_test.txt",
-                            "content_base64": payload_b64,
-                            "res_model": "res.partner",
-                            "res_id": 1,
-                            "mimetype": "text/plain",
-                        },
-                    },
-                    "id": 41,
-                },
-            )
-            assert upload_resp.status_code == 200, (
-                f"attachments_upload HTTP error: {upload_resp.status_code}: {upload_resp.text}"
-            )
-            upload_body = _parse_sse_json(upload_resp.text)
-            upload_result = upload_body.get("result", {})
-            assert upload_result.get("isError") is not True, (
-                f"attachments_upload returned isError: {upload_result}"
-            )
-            upload_parsed = json.loads(upload_result["content"][0]["text"])
-            assert "id" in upload_parsed, (
-                f"'id' missing from attachments_upload response: {upload_parsed}"
-            )
-            attachment_id: int = upload_parsed["id"]
-            assert isinstance(attachment_id, int) and attachment_id > 0, (
-                f"Expected positive int attachment_id, got: {attachment_id!r}"
-            )
-
-            # Download
-            download_resp = await client.post(
-                _MCP_PATH,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "tools/call",
-                    "params": {
-                        "name": "attachments_download",
-                        "arguments": {
-                            "attachment_id": attachment_id,
-                        },
-                    },
-                    "id": 42,
-                },
-            )
-            assert download_resp.status_code == 200, (
-                f"attachments_download HTTP error: {download_resp.status_code}: {download_resp.text}"
-            )
-            download_body = _parse_sse_json(download_resp.text)
-            download_result = download_body.get("result", {})
-            assert download_result.get("isError") is not True, (
-                f"attachments_download returned isError: {download_result}"
-            )
-            download_parsed = json.loads(download_result["content"][0]["text"])
-            assert "content_base64" in download_parsed, (
-                f"'content_base64' missing from download response: {download_parsed}"
-            )
-            assert download_parsed["content_base64"] == payload_b64, (
-                f"Downloaded content does not match uploaded content"
-            )
-            assert "size_bytes" in download_parsed, (
-                f"'size_bytes' missing from download response: {download_parsed}"
-            )
-            assert download_parsed["size_bytes"] == len(payload_bytes), (
-                f"size_bytes mismatch: got {download_parsed['size_bytes']}, "
-                f"expected {len(payload_bytes)}"
-            )
-
-    async def test_two_user_catalog_cache_isolation(
-        self,
-        mcp_client_factory: Callable[..., Any],
-        odoo_harness: StartedOdooContainer,
-        second_user_credentials: tuple[str, str],
-    ) -> None:
-        """D-12 (rescoped): Two users querying discovery_list_models see non-error results;
-        each resolves a distinct uid; catalog cache key contains no credential component.
-        """
-        user2_login, user2_password = second_user_credentials
-
-        async def _call_list_models(username: str, password: str) -> dict[str, Any]:
-            client = mcp_client_factory(
-                url=odoo_harness.url,
-                database=odoo_harness._database,
-                username=username,
-                password=password,
-            )
-            async with client:
-                resp = await client.post(
-                    _MCP_PATH,
-                    json={
-                        "jsonrpc": "2.0",
-                        "method": "tools/call",
-                        "params": {"name": "discovery_list_models", "arguments": {}},
-                        "id": 50,
-                    },
+        try:
+            await asyncio.wait_for(reply.committed.wait(), timeout=20)
+            await _assert_single_write(reply, odoo_harness)
+            if interruption == "drop":
+                result = await asyncio.wait_for(call, timeout=10)
+                assert result["isError"] is True
+                assert "unknown" in result["content"][0]["text"].lower()
+            elif interruption == "keepalive":
+                assert not call.done()
+                result = await asyncio.wait_for(call, timeout=25)
+                assert reply.release.is_set(), "no SSE keepalive arrived"
+                assert _value(result)["id"] == reply.ids[0]
+            elif interruption == "disconnect":
+                call.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await call
+            else:
+                process.kill()
+                await process.wait()
+                with pytest.raises(httpx.TransportError):
+                    await call
+            await asyncio.wait_for(reply.closed.wait(), timeout=10)
+            if interruption == "kill":
+                async with mcp_process_factory("restarted") as (new_url, _, _):
+                    await _assert_user_isolation(
+                        odoo_clients, second_user_credentials, server_url=new_url
+                    )
+            else:
+                await _assert_user_isolation(odoo_clients, second_user_credentials, server_url=url)
+            await _assert_single_write(reply, odoo_harness)
+            finished = _events(log.read_text(), event="tool_call_finished", request_id=request_id)
+            if interruption == "kill":
+                assert not finished, "a killed process cannot emit final telemetry"
+            else:
+                assert len(finished) == 1
+                assert finished[0]["category"] == (
+                    "success" if interruption == "keepalive" else "unknown_write"
                 )
-            body = _parse_sse_json(resp.text)
-            assert resp.status_code == 200, (
-                f"discovery_list_models HTTP error for {username!r}: "
-                f"{resp.status_code}: {resp.text}"
-            )
-            return body
-
-        async def _call_whoami(username: str, password: str) -> dict[str, Any]:
-            client = mcp_client_factory(
-                url=odoo_harness.url,
-                database=odoo_harness._database,
-                username=username,
-                password=password,
-            )
-            async with client:
-                resp = await client.post(_MCP_PATH, json=_WHOAMI_CALL_BODY)
-            assert resp.status_code == 200, (
-                f"whoami failed for {username!r}: {resp.status_code}: {resp.text}"
-            )
-            body = _parse_sse_json(resp.text)
-            result_text = body["result"]["content"][0]["text"]
-            return cast(dict[str, Any], json.loads(result_text))
-
-        # Both users call discovery_list_models concurrently
-        results = await asyncio.gather(
-            _call_list_models("admin", "admin"),
-            _call_list_models(user2_login, user2_password),
-        )
-        assert results[0].get("result", {}).get("isError") is not True, (
-            f"discovery_list_models returned isError for admin: {results[0]}"
-        )
-        assert results[1].get("result", {}).get("isError") is not True, (
-            f"discovery_list_models returned isError for user2: {results[1]}"
-        )
-
-        # Verify UIDs differ (separate users resolve to different identities)
-        admin_whoami, user2_whoami = await asyncio.gather(
-            _call_whoami("admin", "admin"),
-            _call_whoami(user2_login, user2_password),
-        )
-        assert admin_whoami["uid"] != user2_whoami["uid"], (
-            f"Both users resolved to the same uid={admin_whoami['uid']} — "
-            "cross-user credential bleed detected"
-        )
-
-        # Structural assertion: CacheKey is a 3-tuple (url, database, schema_hash)
-        # The unit test in test_catalog.py verifies no credential in the key.
-        # Here we assert the tuple shape is structurally credential-free.
-        # (The in-process cache is not accessible from the integration test process;
-        # we verify via the CacheKey type alias and the 3-tuple assertion.)
-        from godoo_mcp_server.catalog import CacheKey  # noqa: PLC0415
-
-        # Construct a representative key — credentials are NOT arguments
-        example_key: CacheKey = (odoo_harness.url, odoo_harness._database, "any_schema_hash")
-        assert len(example_key) == 3, (
-            f"CacheKey must be a 3-tuple (url, database, schema_hash); got len={len(example_key)}"
-        )
-        # Key components: url (str), database (str), schema_hash (str) — no uid, no password
-        assert isinstance(example_key[0], str), "CacheKey[0] (url) must be str"
-        assert isinstance(example_key[1], str), "CacheKey[1] (database) must be str"
-        assert isinstance(example_key[2], str), "CacheKey[2] (schema_hash) must be str"
-        # TODO: add test_schedule_activity_integration after verifying activity_schedule
-        # and action_feedback method names against the container (A1/A2 assumptions flagged
-        # in 04-RESEARCH.md — defer to follow-up integration test pass)
+            assert _events(log.read_text(), event="tool_call_started", request_id=request_id)
+            assert reply.marker not in log.read_text()
+        finally:
+            reply.release.set()
+            call.cancel()
+            await asyncio.gather(call, return_exceptions=True)

@@ -9,11 +9,11 @@ import base64
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context  # noqa: TC002
-from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_request
 from godoo.client.client import OdooClient, OdooClientConfig
 from godoo.client.errors import OdooError
 
+from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
 from godoo_mcp_server.server import mcp
 
 if TYPE_CHECKING:
@@ -46,11 +46,11 @@ async def attachments_list(
     res_model: str | None = None,
     res_id: int | None = None,
 ) -> dict[str, object]:
-    """List ir.attachment records. Builds effective domain from domain + res_model/res_id filters."""
+    """List ir.attachment records with optional resource filters."""
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             effective_domain: list[Any] = list(domain or [])
             if res_model is not None:
                 effective_domain.append(["res_model", "=", res_model])
@@ -59,12 +59,20 @@ async def attachments_list(
             records = await client.search_read(
                 "ir.attachment",
                 effective_domain,
-                fields=["id", "name", "mimetype", "file_size", "res_model", "res_id", "create_date"],
+                fields=[
+                    "id",
+                    "name",
+                    "mimetype",
+                    "file_size",
+                    "res_model",
+                    "res_id",
+                    "create_date",
+                ],
                 limit=limit,
             )
             return {"attachments": records, "count": len(records)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(
@@ -91,7 +99,7 @@ async def attachments_upload(
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             new_id = await client.create(
                 "ir.attachment",
                 {
@@ -104,7 +112,7 @@ async def attachments_upload(
             )
             return {"id": new_id}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e, write_may_have_dispatched=True) from None
 
 
 @mcp.tool(
@@ -124,7 +132,7 @@ async def attachments_download(
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             data = await client.read_binary("ir.attachment", attachment_id, "datas")
             if not data:
                 return {"error": "attachment_has_no_content", "id": attachment_id}
@@ -140,4 +148,4 @@ async def attachments_download(
                 "size_bytes": len(data),
             }
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None

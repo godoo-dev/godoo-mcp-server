@@ -1,16 +1,21 @@
 """MCP resource registration: odoo:// catalog resources + skill:// file resources.
 
-IMPORTANT: Resource resolvers cannot use get_http_request() — no per-request
-credentials are available in the resources/read dispatch path. Resolvers read
-from the catalog cache (warmed by prior tool calls) or from bundled skill files.
+Model resources are scoped to the authenticated Odoo UID and target. A resource
+request without an authenticated UID receives a cold-cache result; skill resources
+remain available to every request.
 """
 
 from __future__ import annotations
 
 import importlib.resources
-from typing import Any
+from typing import Any, TypedDict
 
-from godoo_mcp_server.catalog import get_model_entry_from_cache
+from fastmcp.server.dependencies import get_http_request
+from godoo.client.client import OdooClient, OdooClientConfig
+from godoo.client.errors import OdooError
+
+from godoo_mcp_server.catalog import CatalogModelRow, get_model_entry_from_cache
+from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
 from godoo_mcp_server.server import mcp
 
 # ---------------------------------------------------------------------------
@@ -54,6 +59,12 @@ _load_skills()  # runs at side-effect import time (server.py imports this module
 # ---------------------------------------------------------------------------
 
 
+class ModelResourceNotFound(TypedDict):
+    error: str
+    model: str
+    hint: str
+
+
 @mcp.resource(
     "odoo://model/{name}",
     name="Odoo Model",
@@ -63,13 +74,31 @@ _load_skills()  # runs at side-effect import time (server.py imports this module
     ),
     mime_type="application/json",
 )
-async def read_model_resource(name: str) -> dict[str, Any]:
+async def read_model_resource(name: str) -> CatalogModelRow | ModelResourceNotFound:
     """Return cached model metadata for the given model name.
 
     Returns an error dict (not an exception) when the cache is cold.
     Callers should invoke discovery_get_fields to warm the catalog first.
     """
-    entry = get_model_entry_from_cache(name)
+    request = get_http_request()
+    creds = request.state.odoo_creds
+    config = OdooClientConfig(
+        url=creds.url,
+        database=creds.database,
+        username=creds.username,
+        password=creds.password,
+    )
+    try:
+        async with managed_odoo_client(OdooClient(config)) as client:
+            session = client.get_session()
+            uid = session.uid if session is not None else None
+    except OdooError as error:
+        raise safe_tool_error(error) from None
+    entry = (
+        get_model_entry_from_cache(name, url=creds.url, database=creds.database, uid=uid)
+        if isinstance(uid, int) and uid > 0
+        else None
+    )
     if entry is None:
         return {
             "error": "model_not_found",
@@ -98,7 +127,9 @@ async def read_action_resource(id: str) -> dict[str, Any]:
     return {
         "error": "action_not_found",
         "id": id,
-        "hint": "call action_list_actions tool to list actions, then use action_execute_action to run them",
+        "hint": (
+            "call action_list_actions to list actions, then use action_execute_action to run them"
+        ),
     }
 
 
