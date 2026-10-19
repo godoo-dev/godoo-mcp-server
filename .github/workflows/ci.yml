@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --all-groups
 
+      - name: Test adapter notification guards
+        run: node --test .github/scripts/notify-adapter.test.cjs
+
       - name: Lint (ruff)
         run: |
           uv run ruff check .
