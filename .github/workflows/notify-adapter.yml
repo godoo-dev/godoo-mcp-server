@@ -1,0 +1,76 @@
+name: Propose adapter MCP update
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [develop]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: notify-adapter
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    if: >-
+      github.repository == 'godoo-dev/godoo-mcp-server' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'develop' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # workflow_sha identifies this trusted default-branch workflow revision.
+      # Never checkout workflow_run.head_sha or download candidate artifacts.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+
+      - name: Validate source CI and current develop head
+        id: candidate
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        with:
+          script: |
+            const { candidate } = require('./.github/scripts/notify-adapter.cjs');
+            const payload = await candidate({ github, context, core });
+            core.setOutput('eligible', payload !== null);
+            if (payload) core.setOutput('payload', JSON.stringify(payload));
+
+      - name: Check App provisioning
+        if: steps.candidate.outputs.eligible == 'true'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          APP_ID: ${{ vars.MCP_UPDATE_APP_ID }}
+          HAS_PRIVATE_KEY: ${{ secrets.MCP_UPDATE_APP_PRIVATE_KEY != '' }}
+        with:
+          script: |
+            if (!process.env.APP_ID || process.env.HAS_PRIVATE_KEY !== 'true') {
+              core.setFailed('Provision repo variable MCP_UPDATE_APP_ID and secret MCP_UPDATE_APP_PRIVATE_KEY for the adapter-scoped GitHub App. No fallback credential is used.');
+            }
+
+      - name: Mint adapter-only dispatch token
+        if: steps.candidate.outputs.eligible == 'true'
+        id: app
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        with:
+          app-id: ${{ vars.MCP_UPDATE_APP_ID }}
+          private-key: ${{ secrets.MCP_UPDATE_APP_PRIVATE_KEY }}
+          owner: godoo-dev
+          repositories: godoo-cf-sudo-mcp
+          permission-contents: write
+
+      - name: Notify trusted adapter receiver
+        if: steps.candidate.outputs.eligible == 'true'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.payload }}
+        with:
+          github-token: ${{ steps.app.outputs.token }}
+          script: |
+            const { dispatch } = require('./.github/scripts/notify-adapter.cjs');
+            await dispatch({ github, payload: JSON.parse(process.env.CANDIDATE) });

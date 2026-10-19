@@ -101,3 +101,35 @@ uv run pytest -m e2e -s -v
 The test skips automatically when Docker or the `claude` CLI is absent — this is a clean skip, not an error.
 
 The default `uv run pytest` excludes e2e tests automatically via the `not e2e` `addopts` filter.
+
+## Adapter update proposals
+
+After `CI` succeeds for a push to the current `develop` head,
+`.github/workflows/notify-adapter.yml` validates the source repository, workflow,
+run attempt and all three required CI jobs. It sends `repository_dispatch` to
+`godoo-dev/godoo-cf-sudo-mcp` with event type `mcp-source-update` and payload:
+
+```json
+{"source_sha":"<40 lowercase hex>","ci_run_id":123,"ci_run_attempt":1}
+```
+
+The adapter's trusted `.github/workflows/update-mcp.yml` independently validates
+that evidence and owns the source manifest and deduplicated update PR. This sender
+never checks out the candidate, executes its artifacts, creates an adapter PR or
+uses Cloudflare credentials. A race with a newer upstream commit is rechecked by
+the receiver; stale evidence is not permission to promote it. Review, adapter CI
+and its test-only deployment guards remain on the adapter side.
+
+Provision repository variable `MCP_UPDATE_APP_ID` and secret
+`MCP_UPDATE_APP_PRIVATE_KEY` in this repository and the adapter repository for a
+GitHub App installed **only on the adapter repository**, with Contents and Pull
+requests write permissions. The sender requests only an adapter Contents write
+token (required for repository dispatch); the receiver requests the permissions
+needed to create its PR. Tokens are short-lived and revoked by the token action.
+Activation requires the receiver on adapter `main` and this sender on MCP
+`develop`, as well as App provisioning in both repositories. Missing provisioning
+fails explicitly; there is no PAT fallback. Configuration and offline checks do
+not establish a successful hosted dispatch or deployment.
+
+Run the dependency-free sender checks with
+`node --test .github/scripts/notify-adapter.test.cjs`; ordinary CI includes them.
