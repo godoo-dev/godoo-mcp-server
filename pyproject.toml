@@ -1,5 +1,5 @@
 [build-system]
-requires = ["uv_build==0.11.3"]
+requires = ["uv_build==0.13.1"]
 build-backend = "uv_build"
 
 [project]
@@ -36,6 +36,11 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "TCH"]
 ignore = []
+
+# Keep formatting scoped to Python files; Markdown snippets were not formatted
+# by the previous Ruff version and include retained historical examples.
+[tool.ruff.format]
+exclude = ["*.md"]
 
 [tool.mypy]
 python_version = "3.14"
