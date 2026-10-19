@@ -37,6 +37,11 @@ line-length = 100
 select = ["E", "F", "I", "UP", "B", "SIM", "TCH"]
 ignore = []
 
+# Keep formatting scoped to Python files; Markdown snippets were not formatted
+# by the previous Ruff version and include retained historical examples.
+[tool.ruff.format]
+exclude = ["*.md"]
+
 [tool.mypy]
 python_version = "3.14"
 strict = true
