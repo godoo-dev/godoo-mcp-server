@@ -28,7 +28,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -53,7 +53,7 @@ jobs:
     permissions:
       id-token: write           # required for OIDC Trusted Publisher exchange
     steps:
-      - uses: actions/checkout@v4   # required: uv publish --index reads pyproject.toml
+      - uses: actions/checkout@v7   # required: uv publish --index reads pyproject.toml
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -78,7 +78,7 @@ jobs:
     permissions:
       id-token: write             # required for OIDC Trusted Publisher exchange
     steps:
-      - uses: actions/checkout@v4   # required: uv publish reads pyproject.toml
+      - uses: actions/checkout@v7   # required: uv publish reads pyproject.toml
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -105,7 +105,7 @@ jobs:
       contents: read
       packages: write             # required for GHCR push via GITHUB_TOKEN
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
