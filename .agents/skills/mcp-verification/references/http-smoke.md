@@ -59,6 +59,9 @@ Exercise the relevant rows; a representative basic trial uses all of these:
 | Fresh `tools/list`, then another independent request | HTTP 200; includes `users_whoami`; neither response has `mcp-session-id`. No initialization/session ID was sent. |
 | `server/discover` with modern metadata | HTTP 200; supported version 2026-07-28 and fixed catalog capabilities (`subscribe`/`listChanged` disabled). |
 | `resources/read` for `skill://odoo/SKILL.md` | HTTP 200 with nonempty Markdown content, not a `Not Found` fallback. |
+| `tools/call` for `guidance_get` with empty arguments | HTTP 200 with the same bundled index Markdown. This tool does not connect to Odoo. |
+| Read `skill://index.json`, then retrieve each topic through resource and tool paths | Every declared topic returns identical nonempty Markdown through both interfaces; unknown tool paths fail and unknown resources return Not Found. |
+| Inspect `tools/list` annotations | `guidance_get` is read-only and closed-world; Odoo reads are read-only and mutating tools remain explicitly writable. Annotations do not grant approval. |
 | Send a UUID in `X-Request-ID` | Same UUID returned in `x-request-id`. Also observe a generated UUID on a request without that header. |
 | Valid envelope with Odoo headers omitted | HTTP 401, `missing_credentials`, with field names only. |
 | Valid metadata/credentials but `MCP-Method: resources/list` with body `tools/list` | HTTP 400, JSON-RPC error; no tool dispatch. |
@@ -66,9 +69,10 @@ Exercise the relevant rows; a representative basic trial uses all of these:
 | POST malformed JSON `{` | HTTP 400, JSON-RPC parse error code -32700, ID null. |
 | `GET /mcp` with throwaway credentials | HTTP 405 rather than an idle subscription stream. |
 
-Responses may be JSON or SSE (`data: {JSON}`); parse accordingly. Discovery does
-not call Odoo. Avoid `tools/call` and authenticated `odoo://model/...` resources in
-this no-Odoo trial. Real user/ACL and write outcomes remain unverified here.
+Responses may be JSON or SSE (`data: {JSON}`); parse accordingly. Discovery and
+`guidance_get` do not call Odoo. Avoid other `tools/call` requests and authenticated
+`odoo://model/...` resources in this no-Odoo trial. Real user/ACL and write outcomes
+remain unverified here.
 
 ## Retain and stop
 

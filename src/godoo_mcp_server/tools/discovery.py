@@ -27,13 +27,14 @@ _DEFAULT_FIELD_ATTRS: list[str] = [
 
 @mcp.tool(
     name="discovery_list_models",
+    annotations={"readOnlyHint": True},
     description=(
-        "List all available Odoo models (technical name, label, description)."
+        "List up to 500 accessible Odoo models (technical name, label, description)."
         " Use discovery_get_fields to inspect a model's fields before operating on it."
     ),
 )
 async def discovery_list_models(ctx: Context) -> dict[str, object]:
-    """Return all Odoo models accessible to the current user."""
+    """Return up to 500 Odoo models accessible to the current user."""
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     config = OdooClientConfig(
@@ -48,7 +49,7 @@ async def discovery_list_models(ctx: Context) -> dict[str, object]:
                 "ir.model",
                 [],
                 fields=["model", "name", "info"],
-                limit=500,  # safe cap above any realistic model count (Open Question 2)
+                limit=500,
                 order="model",
             )
             return {"models": models}
@@ -58,6 +59,7 @@ async def discovery_list_models(ctx: Context) -> dict[str, object]:
 
 @mcp.tool(
     name="discovery_get_fields",
+    annotations={"readOnlyHint": True},
     description=(
         "Return field metadata for an Odoo model. Includes type, label, required,"
         " readonly, help text, and relational target model."
@@ -90,6 +92,7 @@ async def discovery_get_fields(
 
 @mcp.tool(
     name="discovery_list_menus",
+    annotations={"readOnlyHint": True},
     description=(
         "List Odoo application menus (ir.ui.menu). Returns menu entries ordered by sequence."
         " Use domain to filter by parent or action type."

@@ -12,6 +12,7 @@ from fastmcp.server.dependencies import get_http_request
 from godoo.client.client import OdooClient, OdooClientConfig
 from godoo.client.errors import OdooError
 
+from godoo_mcp_server.links import record_web_urls
 from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
 from godoo_mcp_server.server import mcp
 
@@ -30,11 +31,12 @@ def _make_config(creds: OdooCredentials) -> OdooClientConfig:
 
 @mcp.tool(
     name="record_search",
+    annotations={"readOnlyHint": True},
     description=(
         "Search records of any Odoo model using a domain filter. Returns matching records"
         " with the requested fields in a single call. domain uses raw Odoo domain syntax:"
         " list of triples, e.g. [['active','=',True]]. Pagination: pass limit + offset."
-        " Default limit=80. Pass limit=None to let Odoo apply its server-side default."
+        " Default limit=80. Use a bounded positive integer limit."
     ),
 )
 async def record_search(
@@ -59,13 +61,20 @@ async def record_search(
                 offset=offset,
                 order=order,
             )
-            return {"records": records, "count": len(records)}
+            return {
+                "records": records,
+                "count": len(records),
+                "web_urls": record_web_urls(
+                    creds.url, model, [r["id"] for r in records if "id" in r]
+                ),
+            }
     except OdooError as e:
         raise safe_tool_error(e) from None
 
 
 @mcp.tool(
     name="record_read",
+    annotations={"readOnlyHint": True},
     description="Read fields of specific records by id list.",
 )
 async def record_read(
@@ -80,13 +89,19 @@ async def record_read(
     try:
         async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             records = await client.read(model, ids, fields)
-            return {"records": records}
+            return {
+                "records": records,
+                "web_urls": record_web_urls(
+                    creds.url, model, [r["id"] for r in records if "id" in r]
+                ),
+            }
     except OdooError as e:
         raise safe_tool_error(e) from None
 
 
 @mcp.tool(
     name="record_create",
+    annotations={"readOnlyHint": False},
     description="Create a new record. Returns the new record id.",
 )
 async def record_create(
@@ -100,13 +115,15 @@ async def record_create(
     try:
         async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             new_id = await client.create(model, values)
-            return {"id": new_id}
+            urls = record_web_urls(creds.url, model, [new_id])
+            return {"id": new_id, "web_url": urls.get(str(new_id))}
     except OdooError as e:
         raise safe_tool_error(e, write_may_have_dispatched=True) from None
 
 
 @mcp.tool(
     name="record_update",
+    annotations={"readOnlyHint": False},
     description="Update fields on existing records by id list.",
 )
 async def record_update(
@@ -121,13 +138,17 @@ async def record_update(
     try:
         async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             ok = await client.write(model, ids, values)
-            return {"success": ok}
+            return {
+                "success": ok,
+                "web_urls": record_web_urls(creds.url, model, ids) if ok else {},
+            }
     except OdooError as e:
         raise safe_tool_error(e, write_may_have_dispatched=True) from None
 
 
 @mcp.tool(
     name="record_delete",
+    annotations={"readOnlyHint": False},
     description="Delete records by id list.",
 )
 async def record_delete(

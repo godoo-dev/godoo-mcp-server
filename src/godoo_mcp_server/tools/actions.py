@@ -30,6 +30,7 @@ def _make_config(creds: OdooCredentials) -> OdooClientConfig:
 
 @mcp.tool(
     name="action_list_actions",
+    annotations={"readOnlyHint": True},
     description=(
         "List available Odoo actions from ir.actions.server and ir.actions.act_window."
         " Each result is tagged with action_type='server' or action_type='window'."
@@ -73,6 +74,7 @@ async def action_list_actions(
 
 @mcp.tool(
     name="action_execute_action",
+    annotations={"readOnlyHint": False},
     description=(
         "Execute an ir.actions.server action by its id."
         " Calls the 'run' method on ir.actions.server with the given action_id."

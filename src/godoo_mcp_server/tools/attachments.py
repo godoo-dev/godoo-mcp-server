@@ -31,6 +31,7 @@ def _make_config(creds: OdooCredentials) -> OdooClientConfig:
 
 @mcp.tool(
     name="attachments_list",
+    annotations={"readOnlyHint": True},
     description=(
         "List ir.attachment records. Optionally filter by res_model and/or res_id"
         " to get attachments for a specific record."
@@ -77,6 +78,7 @@ async def attachments_list(
 
 @mcp.tool(
     name="attachments_upload",
+    annotations={"readOnlyHint": False},
     description=(
         "Upload a file as an ir.attachment linked to an Odoo record."
         " name: filename for the attachment."
@@ -117,6 +119,7 @@ async def attachments_upload(
 
 @mcp.tool(
     name="attachments_download",
+    annotations={"readOnlyHint": True},
     description=(
         "Download an ir.attachment by id, returning content as base64."
         " If the attachment has no binary content (empty datas field),"

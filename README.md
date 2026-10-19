@@ -2,6 +2,33 @@
 
 Stateless MCP server for Odoo — raw primitives + skill resources.
 
+## Guidance and client support
+
+Bundled Odoo guidance is served as `skill://index.json` and
+`skill://odoo/{path}` MCP resources. Clients decide whether and how to surface
+resources; a resource URI does not install a client-native skill. Clients that
+expose tools can call the read-only `guidance_get()` tool for the same index and
+select a detailed guide using its `path` parameter. Server instructions point to
+both interfaces; actual client selection/loading still requires client testing.
+
+The curated bundle covers schema discovery, field formats, queries, record changes,
+dynamic-property replacement risks, chatter and activities. `skill://index.json`
+lists topic paths and descriptions from the same manifest used by the tool.
+Guidance adapts to a target through the caller's current schema observations;
+it does not save generated server profiles or infer environment/approval policy.
+The [provenance record](src/godoo_mcp_server/skills/PROVENANCE.md) identifies the
+revision-pinned toolbox material adapted for MCP and its CC0 dedication.
+
+Tool annotations describe read/write behavior and remain hints, not permission.
+Guidance cannot override a client's approval policy. `users_whoami` includes the
+configured target `url` (without userinfo, query or fragment) alongside database
+and identity; it does not infer a test/production label from either name.
+
+Record search/read/update results include a `web_urls` mapping keyed by record ID;
+create includes `web_url`. Raw Odoo record fields remain unchanged. Links use the
+configured Odoo base URL, require browser access, and do not guarantee a model has
+a standalone form. Delete results have no link.
+
 ## Installation
 
 ```bash

@@ -58,6 +58,9 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Install package verification dependencies
+        run: uv sync --frozen --all-groups
+
       - name: Build package artifacts
         run: uv build
 
@@ -66,7 +69,22 @@ jobs:
           uv pip install --target "$RUNNER_TEMP/wheel-site" --no-deps dist/*.whl
           sha256sum dist/*
           cd "$RUNNER_TEMP"
-          PYTHONPATH="$RUNNER_TEMP/wheel-site" python -c 'import importlib.resources, pathlib, godoo_mcp_server; package = pathlib.Path(godoo_mcp_server.__file__).resolve(); assert package.is_relative_to(pathlib.Path(__import__("os").environ["RUNNER_TEMP"]) / "wheel-site"); assert godoo_mcp_server.__version__ == "0.2.0"; assert (importlib.resources.files("godoo_mcp_server") / "skills" / "SKILL.md").is_file()'
+          PYTHONPATH="$RUNNER_TEMP/wheel-site" "$GITHUB_WORKSPACE/.venv/bin/python" - <<'PY'
+          import importlib.resources
+          import os
+          from pathlib import Path
+          import godoo_mcp_server
+          from godoo_mcp_server.resources import _SKILL_FILES, _SKILL_PATHS
+
+          package = Path(godoo_mcp_server.__file__).resolve()
+          assert package.is_relative_to(Path(os.environ["RUNNER_TEMP"]) / "wheel-site")
+          assert godoo_mcp_server.__version__ == "0.2.0"
+          assert set(_SKILL_FILES) == set(_SKILL_PATHS)
+          assert all(_SKILL_FILES.values())
+          bundled = importlib.resources.files("godoo_mcp_server") / "skills"
+          assert (bundled / "CC0-1.0.txt").is_file()
+          assert (bundled / "PROVENANCE.md").is_file()
+          PY
 
       - name: Build container without publishing
         run: docker build --pull --tag godoo-mcp-server:ci .
