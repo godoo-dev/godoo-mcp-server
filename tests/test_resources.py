@@ -318,7 +318,7 @@ async def test_menu_resource_cold_cache(mcp_client: AsyncClient) -> None:
 
 
 async def test_startup_assertion_all_skill_paths_loaded() -> None:
-    """SKILL-02: _SKILL_FILES contains all 4 declared paths with non-empty content.
+    """SKILL-02: _SKILL_FILES contains all declared paths with non-empty content.
 
     This verifies that _load_skills() startup assertion passes — if any skill file
     were missing, module import would have raised AssertionError (server fails to start).

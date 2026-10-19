@@ -93,6 +93,7 @@ async def test_identity(odoo_mcp: httpx.AsyncClient) -> None:
     assert identity["uid"] > 0
     assert identity["database"] == "test_odoo"
     assert identity["username"] == "admin"
+    assert identity["url"] == odoo_mcp.headers["x-odoo-url"].rstrip("/")
 
 
 async def test_record_crud(odoo_mcp: httpx.AsyncClient) -> None:
@@ -100,18 +101,23 @@ async def test_record_crud(odoo_mcp: httpx.AsyncClient) -> None:
     created = _value(await _call(odoo_mcp, "record_create", model=model, values={"name": "CRUD"}))
     record_id = created["id"]
     assert record_id > 0
+    url = f"{odoo_mcp.headers['x-odoo-url'].rstrip('/')}/web#model={model}&id={record_id}"
+    assert created["web_url"] == url
     found = _value(
         await _call(odoo_mcp, "record_search", model=model, domain=[["id", "=", record_id]])
     )
     assert [row["id"] for row in found["records"]] == [record_id]
+    assert found["web_urls"] == {str(record_id): url}
     read = _value(await _call(odoo_mcp, "record_read", model=model, ids=[record_id]))
     assert read["records"][0]["name"] == "CRUD"
+    assert read["web_urls"] == {str(record_id): url}
     updated = _value(
         await _call(
             odoo_mcp, "record_update", model=model, ids=[record_id], values={"name": "Updated"}
         )
     )
     assert updated["success"] is True
+    assert updated["web_urls"] == {str(record_id): url}
     read = _value(await _call(odoo_mcp, "record_read", model=model, ids=[record_id]))
     assert read["records"][0]["name"] == "Updated"
     assert _value(await _call(odoo_mcp, "record_delete", model=model, ids=[record_id]))["success"]

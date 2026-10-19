@@ -31,6 +31,7 @@ def _make_config(creds: OdooCredentials) -> OdooClientConfig:
 
 @mcp.tool(
     name="mail_post_message",
+    annotations={"readOnlyHint": False},
     description=(
         "Post a message to any Odoo record's chatter (mail.thread mixin)."
         " Calls message_post on the given model/res_id."
@@ -75,6 +76,7 @@ async def mail_post_message(
 
 @mcp.tool(
     name="mail_log_note",
+    annotations={"readOnlyHint": False},
     description=(
         "Post an internal note on any Odoo record's chatter."
         " Calls message_post with is_internal=True and subtype_xmlid='mail.mt_note'."
@@ -110,6 +112,7 @@ async def mail_log_note(
 
 @mcp.tool(
     name="mail_list_messages",
+    annotations={"readOnlyHint": True},
     description=(
         "List chatter messages for an Odoo record."
         " Calls search_read on mail.message with domain filtered by model and res_id."
@@ -154,11 +157,12 @@ async def mail_list_messages(
 
 @mcp.tool(
     name="mail_schedule_activity",
+    annotations={"readOnlyHint": False},
     description=(
         "Schedule an activity on any Odoo record."
         " Calls activity_schedule on the mail.activity.mixin."
         " model: Odoo model name. res_id: numeric record id."
-        " activity_type_id: id of the activity type (e.g. 1 for Email, 2 for Call)."
+        " activity_type_id: numeric id from this instance's mail.activity.type records."
         " date_deadline: due date in YYYY-MM-DD format."
         " note: optional activity note. user_id: optional assignee user id."
     ),
@@ -196,6 +200,7 @@ async def mail_schedule_activity(
 
 @mcp.tool(
     name="mail_list_activities",
+    annotations={"readOnlyHint": True},
     description=(
         "List pending activities for an Odoo record."
         " Calls search_read on mail.activity filtered by model and res_id."
@@ -236,6 +241,7 @@ async def mail_list_activities(
 
 @mcp.tool(
     name="mail_mark_activity_done",
+    annotations={"readOnlyHint": False},
     description=(
         "Mark an activity as done with optional feedback."
         " Calls action_feedback on mail.activity."

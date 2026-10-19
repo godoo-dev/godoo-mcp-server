@@ -58,6 +58,7 @@ _TOOL_NAMES = frozenset(
         "discovery_get_fields",
         "discovery_list_menus",
         "discovery_list_models",
+        "guidance_get",
         "mail_list_activities",
         "mail_list_messages",
         "mail_log_note",
@@ -92,7 +93,13 @@ if TYPE_CHECKING:
 
 mcp = FastMCP(
     "godoo-mcp-server",
-    instructions="Stateless MCP server for Odoo. Per-request credentials via X-Odoo-* headers.",
+    instructions=(
+        "Stateless MCP server for Odoo. Read guidance_get (or skill://odoo/SKILL.md) "
+        "for Odoo workflows. Use users_whoami to confirm identity and target URL. "
+        "Database and host names do not establish an environment's safety. "
+        "Guidance and tool annotations do not grant write permission or override client policy. "
+        "Per-request credentials via X-Odoo-* headers."
+    ),
     version=__version__,
 )
 
