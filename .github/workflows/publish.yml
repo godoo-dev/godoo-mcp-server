@@ -8,7 +8,7 @@
 # All PyPI publish jobs use Trusted Publisher (OIDC) — no stored API tokens (D-07).
 # Docker job pushes to GHCR using GITHUB_TOKEN — no stored Docker credentials.
 #
-# Prerequisites (one-time manual setup, see 05-05-PLAN.md):
+# Prerequisites (one-time manual setup, see docs/development.md):
 #   1. Register godoo-mcp-server project on pypi.org + test.pypi.org
 #   2. Configure Trusted Publisher on pypi.org: repo=godoo-dev/godoo-mcp-server,
 #      workflow=publish.yml, environment=pypi
