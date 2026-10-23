@@ -70,7 +70,7 @@ def package(directory: Path, source_ref: str) -> None:
     if (directory / "candidate.json").exists():
         raise ValueError("Use a new candidate directory; do not overwrite a tested candidate")
     identity = source_identity()
-    execute("uv", "build", "--frozen", "--wheel", "--out-dir", str(directory))
+    execute("uv", "build", "--wheel", "--out-dir", str(directory))
     wheels = list(directory.glob("*.whl"))
     if len(wheels) != 1:
         raise ValueError("Expected exactly one candidate wheel")
