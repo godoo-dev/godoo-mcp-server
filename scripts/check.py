@@ -20,6 +20,7 @@ from pathlib import Path
 from candidate import (
     ROOT,
     file_record,
+    loaded_image_ref,
     require_junit,
     run,
     sha256,
@@ -153,8 +154,7 @@ def odoo(directory: Path, major: int) -> None:
                 ["docker", "image", "inspect", archive_tag], capture_output=True
             )
             if existing.returncode == 0:
-                if json.loads(existing.stdout)[0]["Id"] != manifest["image"]["id"]:
-                    raise ValueError("Archive tag conflicts with a caller-owned image")
+                loaded_image_ref(directory, manifest)
             else:
                 cleanup_tag = archive_tag
                 execute(
@@ -163,7 +163,7 @@ def odoo(directory: Path, major: int) -> None:
                     "--input",
                     str(directory / manifest["image"]["archive"]["file"]),
                 )
-            tag = manifest["image"]["id"]
+            tag = loaded_image_ref(directory, manifest)
         if owned_image:
             with tempfile.TemporaryDirectory(prefix="mcp-image-") as temporary:
                 context = Path(temporary)
@@ -184,8 +184,8 @@ def odoo(directory: Path, major: int) -> None:
                     str(context),
                 )
         image_id = run("docker", "image", "inspect", "--format", "{{.Id}}", tag)
-        if not owned_image and image_id != manifest["image"]["id"]:
-            raise ValueError("Optional19 image differs from tested18 image")
+        if not owned_image:
+            loaded_image_ref(directory, manifest)
         prefix = "" if major == 18 else "odoo19-"
         facts = directory / f"{prefix}odoo-facts.jsonl"
         facts.unlink(missing_ok=True)
