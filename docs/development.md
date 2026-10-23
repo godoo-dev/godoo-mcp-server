@@ -81,7 +81,7 @@ builds once, tests that ID and exports the same image bytes for later promotion.
 
 The [CI workflow](../.github/workflows/ci.yml) runs on all develop/main PRs and
 pushes, plus manual/reusable invocations. Its stable `required` aggregate rejects
-anything except success from exactly `offline`, `package` and `odoo18`. All
+anything except success from exactly `offline`, `package`, `odoo18` and `archive`. All
 installs/checks are frozen. Candidate reports keep source, patch/untracked
 identity, version, lock/tool identities and hashes. Local dirty checks are valid
 only for those exact input bytes; publication requires a clean tagged commit.
@@ -90,7 +90,12 @@ The [manual publish workflow](../.github/workflows/publish.yml) must be dispatch
 from main with a `v<metadata-version>` tag reachable from main. It resolves an
 immutable SHA and invokes the same validator in that run. `publish=false` is the
 default. Credential-free preflight verifies the source/ref/version, wheel and
-image archive hashes and the loaded tested image ID. Final promotion repeats
+image archive hashes and the loaded tested image identity. Docker's classic
+store reports the config digest; its containerd store can report the OCI manifest
+digest. Both must be derived from the exact hash-verified single-image archive,
+including its config linkage. The verified unique tag is used for promotion;
+a mutable or unrelated tag fails identity verification. CI also downloads and
+loads the tested archive in a separate required job without publication. Final promotion repeats
 verification and consumes that wheel and image without any rebuild. Production
 container tags use the immutable package version. TestPyPI is also publication;
 its choice does not publish a production container.

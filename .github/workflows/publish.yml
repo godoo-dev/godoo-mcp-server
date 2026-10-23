@@ -139,7 +139,7 @@ jobs:
               subprocess.run(['docker', 'login', 'ghcr.io', '--username', os.environ['GHCR_USER'],
                               '--password-stdin'], input=os.environ['GHCR_TOKEN'], text=True, check=True)
               image = 'ghcr.io/' + os.environ['GHCR_REPOSITORY'].lower() + ':' + candidate['version']
-              subprocess.run(['docker', 'tag', candidate['image']['id'], image], check=True)
+              subprocess.run(['docker', 'tag', candidate['image']['tag'], image], check=True)
               subprocess.run(['docker', 'push', image], check=True)
               subprocess.run(['docker', 'image', 'inspect', '--format', '{{json .RepoDigests}}', image], check=True)
           PY

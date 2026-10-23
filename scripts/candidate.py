@@ -13,6 +13,7 @@ import json
 import os
 import re
 import subprocess
+import tarfile
 import tomllib
 import xml.etree.ElementTree as ET
 import zipfile
@@ -20,7 +21,7 @@ from email.parser import BytesParser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MANDATORY = {"offline", "package", "odoo18"}
+MANDATORY = {"offline", "package", "odoo18", "archive"}
 
 
 def run(*args: str, cwd: Path = ROOT) -> str:
@@ -160,6 +161,40 @@ def require_release_ref(ref: str, sha: str, package_version: str) -> None:
     subprocess.run(["git", "merge-base", "--is-ancestor", sha, "origin/main"], cwd=ROOT, check=True)
 
 
+def loaded_image_ref(directory: Path, manifest: dict) -> str:
+    """Accept only daemon identities derived from the exact tested image archive."""
+    image = manifest["image"]
+    archive_path = check_file(directory, image["archive"])
+    with tarfile.open(archive_path) as archive:
+        entries = json.load(archive.extractfile("manifest.json"))
+        if len(entries) != 1 or entries[0].get("RepoTags") != [image["tag"]]:
+            raise ValueError("Expected the single tested image tag in archive")
+        config = archive.extractfile(entries[0]["Config"]).read()
+        config_id = "sha256:" + hashlib.sha256(config).hexdigest()
+        identities = {config_id}
+        if "index.json" in archive.getnames():
+            index = json.load(archive.extractfile("index.json"))
+            descriptors = index["manifests"]
+            if len(descriptors) != 1:
+                raise ValueError("Expected one archived image descriptor")
+            descriptor = descriptors[0]
+            digest = descriptor["digest"]
+            if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+                raise ValueError("Invalid archived image digest")
+            payload = archive.extractfile("blobs/sha256/" + digest.split(":")[1]).read()
+            if "sha256:" + hashlib.sha256(payload).hexdigest() != digest:
+                raise ValueError("Archived image descriptor digest mismatch")
+            if json.loads(payload)["config"]["digest"] != config_id:
+                raise ValueError("Archived image descriptor config mismatch")
+            identities.add(digest)
+    if image["id"] not in identities:
+        raise ValueError("Tested image identity differs from archive")
+    observed = run("docker", "image", "inspect", "--format", "{{.Id}}", image["tag"])
+    if observed not in identities:
+        raise ValueError("Loaded image differs from tested archive")
+    return image["tag"]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -181,11 +216,7 @@ def main() -> None:
     else:
         manifest = verify(args.candidate_dir, complete=True, release_ref=args.release_ref)
         if args.loaded_image:
-            observed = run(
-                "docker", "image", "inspect", "--format", "{{.Id}}", manifest["image"]["id"]
-            )
-            if observed != manifest["image"]["id"]:
-                raise ValueError("Loaded image differs from tested image")
+            loaded_image_ref(args.candidate_dir, manifest)
         print(json.dumps(manifest, indent=2))
 
 

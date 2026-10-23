@@ -90,7 +90,7 @@ failure. Preserve failed evidence. Do not weaken expected behavior to pass.
 
 `.github/workflows/ci.yml` is both authoritative PR/push validation on develop/main
 (no path filter) and the release workflow's same-run reusable validator. Job
-`required` runs always and requires `offline,package,odoo18`, each success.
+`required` runs always and requires `offline,package,odoo18,archive`, each success.
 It waits for19: requested19 must succeed and unrequested19 must be skipped.
 `tested-candidate` contains the tested wheel, image archive and manifest. The
 manual publish workflow resolves a version-matching tag reachable from main,

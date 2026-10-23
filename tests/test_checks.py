@@ -3,16 +3,83 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import io
 import json
 import os
 import subprocess
 import sys
+import tarfile
 import zipfile
 
 import pytest
 
 from scripts import candidate
 from tests.odoo_proof import requested_major
+
+
+@pytest.fixture
+def archived_image(tmp_path):
+    config = b'{"rootfs":{"diff_ids":["sha256:test-layer"]}}'
+    config_id = "sha256:" + hashlib.sha256(config).hexdigest()
+    payload = json.dumps({"config": {"digest": config_id}}).encode()
+    descriptor_id = "sha256:" + hashlib.sha256(payload).hexdigest()
+    tag = "godoo-mcp-server:candidate-owned"
+    files = {
+        "manifest.json": json.dumps(
+            [{"Config": "config.json", "RepoTags": [tag], "Layers": []}]
+        ).encode(),
+        "config.json": config,
+        "index.json": json.dumps({"manifests": [{"digest": descriptor_id}]}).encode(),
+        "blobs/sha256/" + descriptor_id.split(":")[1]: payload,
+    }
+    archive = tmp_path / "image.tar"
+    with tarfile.open(archive, "w") as stream:
+        for name, content in files.items():
+            member = tarfile.TarInfo(name)
+            member.size = len(content)
+            stream.addfile(member, io.BytesIO(content))
+    manifest = {"image": {"id": config_id, "tag": tag, "archive": candidate.file_record(archive)}}
+    return tmp_path, manifest, config_id, descriptor_id
+
+
+@pytest.mark.parametrize("recorded_kind", [2, 3])
+@pytest.mark.parametrize("loaded_kind", [2, 3])
+def test_loaded_archive_accepts_both_daemon_identity_forms(
+    archived_image, monkeypatch, recorded_kind, loaded_kind
+):
+    directory, manifest, *_ = archived_image
+    manifest["image"]["id"] = archived_image[recorded_kind]
+    calls = []
+
+    def inspect(*args):
+        calls.append(args)
+        return archived_image[loaded_kind]
+
+    monkeypatch.setattr(candidate, "run", inspect)
+    assert candidate.loaded_image_ref(directory, manifest) == manifest["image"]["tag"]
+    assert calls[0][-1] == manifest["image"]["tag"]
+
+
+def test_loaded_archive_rejects_retargeted_tag(archived_image, monkeypatch):
+    directory, manifest, *_ = archived_image
+    monkeypatch.setattr(candidate, "run", lambda *args: "sha256:" + "f" * 64)
+    with pytest.raises(ValueError, match="Loaded image differs"):
+        candidate.loaded_image_ref(directory, manifest)
+
+
+def test_loaded_archive_rejects_unrelated_recorded_identity(archived_image):
+    directory, manifest, *_ = archived_image
+    manifest["image"]["id"] = "sha256:" + "f" * 64
+    with pytest.raises(ValueError, match="Tested image identity differs"):
+        candidate.loaded_image_ref(directory, manifest)
+
+
+def test_loaded_archive_rejects_unrelated_recorded_tag(archived_image):
+    directory, manifest, *_ = archived_image
+    manifest["image"]["tag"] += "-other"
+    with pytest.raises(ValueError, match="single tested image tag"):
+        candidate.loaded_image_ref(directory, manifest)
 
 
 @pytest.mark.parametrize("result", ["failure", "skipped", "cancelled", "", None, False])
