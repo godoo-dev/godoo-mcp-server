@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import subprocess
+import sys
 import zipfile
 
 import pytest
@@ -25,6 +28,26 @@ def test_required_rejects_every_non_success(result):
 def test_required_rejects_missing_or_unexpected_jobs(names):
     with pytest.raises(ValueError):
         candidate.require_results({name: {"result": "success"} for name in names})
+
+
+@pytest.mark.parametrize("requested", [True, False])
+@pytest.mark.parametrize(
+    "state", ["success", "failure", "cancelled", "skipped", "pending", "missing", None]
+)
+def test_requested_compatibility_contributes_to_required(requested, state):
+    results = {name: {"result": "success"} for name in candidate.MANDATORY}
+    if state != "missing":
+        results["odoo19"] = {"result": state}
+    result = subprocess.run(
+        [sys.executable, str(candidate.ROOT / "scripts/candidate.py"), "required"],
+        env={**os.environ, "RESULTS": json.dumps(results), "REQUESTED19": str(requested).lower()},
+        text=True,
+        capture_output=True,
+    )
+    accepted = state == ("success" if requested else "skipped") or (
+        not requested and state == "missing"
+    )
+    assert (result.returncode == 0) == accepted, result.stderr
 
 
 @pytest.mark.parametrize(

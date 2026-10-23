@@ -118,7 +118,7 @@ jobs:
   required:
     name: required
     if: ${{ always() }}
-    needs: [offline, package, odoo18]
+    needs: [offline, package, odoo18, odoo19]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -131,11 +131,12 @@ jobs:
       - name: Require exactly every mandatory successful result
         env:
           RESULTS: ${{ toJSON(needs) }}
+          REQUESTED19: ${{ inputs.qualify19 == true }}
         run: python scripts/candidate.py required
 
   odoo19:
     if: ${{ inputs.qualify19 == true }}
-    needs: [required, odoo18]
+    needs: [offline, package, odoo18]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683

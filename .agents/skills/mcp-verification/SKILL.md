@@ -90,7 +90,8 @@ failure. Preserve failed evidence. Do not weaken expected behavior to pass.
 
 `.github/workflows/ci.yml` is both authoritative PR/push validation on develop/main
 (no path filter) and the release workflow's same-run reusable validator. Job
-`required` runs always and accepts exactly `offline,package,odoo18`, each success.
+`required` runs always and requires `offline,package,odoo18`, each success.
+It waits for19: requested19 must succeed and unrequested19 must be skipped.
 `tested-candidate` contains the tested wheel, image archive and manifest. The
 manual publish workflow resolves a version-matching tag reachable from main,
 validates that exact SHA, checks candidate identities before credentials and again
@@ -99,7 +100,7 @@ before promotion, and loads/pushes the tested image rather than rebuilding it.
 Hosted runs, branch protections, environment protections and registry acceptance
 require separate readback; source configuration/local predicates do not prove them.
 
-Optional19 is explicit: manual `qualify19=true` depends on successful required18
+Optional19 is explicit: manual `qualify19=true` depends on successful offline/package/18
 and consumes the same wheel/image/archive/lock. Locally `scripts/check.py odoo19`
 rejects candidates without successful18; it needs separate resource authority.
 It is outside the ordinary18 gate, fails honestly when requested, and remains

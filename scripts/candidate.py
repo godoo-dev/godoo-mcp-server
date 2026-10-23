@@ -55,12 +55,18 @@ def version() -> str:
     return tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
 
 
-def require_results(results: dict) -> None:
-    if set(results) != MANDATORY or any(
+def require_results(results: dict, requested19: bool = False) -> None:
+    expected = MANDATORY | ({"odoo19"} if requested19 or "odoo19" in results else set())
+    if set(results) != expected or any(
         not isinstance(results[name], dict) or results[name].get("result") != "success"
         for name in MANDATORY
     ):
         raise ValueError(f"Every mandatory job must succeed: {results}")
+    if "odoo19" in expected and (
+        not isinstance(results["odoo19"], dict)
+        or results["odoo19"].get("result") != ("success" if requested19 else "skipped")
+    ):
+        raise ValueError(f"Requested compatibility result must match selection: {results}")
 
 
 def require_junit(path: Path) -> int:
@@ -166,7 +172,10 @@ def main() -> None:
     check.add_argument("--loaded-image", action="store_true")
     args = parser.parse_args()
     if args.command == "required":
-        require_results(json.loads(os.environ["RESULTS"]))
+        requested = os.environ.get("REQUESTED19", "false")
+        if requested not in {"true", "false"}:
+            raise ValueError("REQUESTED19 must be true or false")
+        require_results(json.loads(os.environ["RESULTS"]), requested == "true")
     elif args.command == "release-ref":
         require_release_ref(args.ref, run("git", "rev-parse", "HEAD"), version())
     else:
