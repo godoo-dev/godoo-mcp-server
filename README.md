@@ -5,8 +5,7 @@ action, attachment and user tools, plus bundled workflow guidance. The Python
 server uses the godoo client and each caller's Odoo permissions.
 
 This is the operational Odoo MCP. Odoo Atlas provides a separate read-only
-knowledge MCP. The narrow `godoo-cf-sudo-mcp` Access adapter routes managed users
-to Odoo credentials; `godoo-proxy` owns the broader commercial OAuth/SSO gateway.
+knowledge MCP. `godoo-proxy` owns the broader commercial OAuth/SSO gateway.
 Portfolio targets belong in [godoo HQ](https://github.com/godoo-dev/godoo-hq).
 
 ## Run from source
@@ -18,7 +17,7 @@ uv sync --frozen --all-groups
 HOST=127.0.0.1 PORT=8000 uv run godoo-mcp-server
 ```
 
-The Streamable HTTP endpoint is `/mcp/`; `/healthz` is an unauthenticated health
+The Streamable HTTP endpoint is `/mcp`; `/healthz` is an unauthenticated health
 check. Supply Odoo credentials on each MCP request, or set the environment
 variables below before starting the server. The CLI also accepts `--version`.
 Package installation uses `pip install godoo-mcp-server`; confirm the selected
@@ -49,7 +48,7 @@ configure a matching probe when overriding the container port.
 ## Use and develop
 
 - [MCP API](docs/api.md): protocol, exact tool arguments and resource limits.
-- [Development](docs/development.md): checks, source layout, packaging and adapter updates.
+- [Development](docs/development.md): checks, source layout, packaging and candidate validation.
 - [Bundled Odoo guidance](src/godoo_mcp_server/skills/SKILL.md): consumer workflows,
   also available through `guidance_get()` and `skill://odoo/SKILL.md`.
 - [Guidance provenance](src/godoo_mcp_server/skills/PROVENANCE.md): adapted sources and licensing.

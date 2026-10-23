@@ -22,6 +22,7 @@ from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
 from godoo_mcp_server.server import create_app
+from tests.odoo_proof import observe, requested_major
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable
@@ -129,29 +130,15 @@ _SECOND_USER_PASSWORD = "TestPass123!"
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def odoo_harness() -> AsyncGenerator[TestHarness]:
     """Acceptance runs always use disposable Odoo 18, independent of library defaults."""
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setenv("ODOO_VERSION", "18.0")
-        async with TestHarness(
-            modules=["base", "mail"],
-            snapshot=False,
-            database="test_odoo",
-            admin_password="admin",
-        ) as harness:
-            # Verify the running server, not only the requested image tag.
-            from httpx import AsyncClient
-
-            async with AsyncClient() as client:
-                response = await client.post(
-                    f"{harness.url}/jsonrpc",
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "call",
-                        "params": {"service": "common", "method": "version", "args": []},
-                    },
-                )
-            assert response.json()["result"]["server_version_info"][0] == 18
-            yield harness
+    major = requested_major()
+    async with TestHarness(
+        modules=["base", "mail"],
+        snapshot=False,
+        database="test_odoo",
+        admin_password="admin",
+    ) as harness:
+        await observe(harness, major)
+        yield harness
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")

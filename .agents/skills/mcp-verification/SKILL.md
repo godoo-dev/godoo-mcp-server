@@ -1,121 +1,132 @@
 ---
 name: mcp-verification
-description: Verify godoo-mcp-server over Streamable HTTP, real Odoo Testcontainers and built packages/images, or maintain the affected verification instructions. Use for MCP protocol, Odoo tools, credential isolation and interrupted-write evidence.
+description: Verify godoo-mcp-server over real Streamable HTTP, installed wheels and exact candidate images against disposable Odoo18, or maintain those proof paths. Covers caller permissions, credential isolation and interrupted writes; excludes hosted gateway acceptance.
 ---
 
 # Verify godoo-mcp-server
 
-Choose the smallest path that reaches the requested behavior. This repository owns
-MCP and Odoo tool behavior; hosted OAuth, gateway credential lifecycle and platform
-idle/sleep acceptance belong to the adapter. Keep those results separate.
+Use the selected checkout's native checks. This skill owns MCP verification;
+consumer workflow guidance stays in `src/godoo_mcp_server/skills/` with its separate
+manifest, provenance and license. Gateway identity/OAuth and deployment acceptance
+remain with their owners. Passing local checks grants no publication authority.
 
-## Prepare and identify the run
+## Prepare and identify
 
-Work from the selected checkout root. Record `git rev-parse HEAD`,
-`git status --short`, the command, exit status and selected/skipped tests. A dirty
-checkout needs its diff with the evidence; an ancestor's checks do not verify a
-changed source tree. Resolve evidence placement through owner-paths or the project's
-local guidance. Keep credentials and record contents out of shared transcripts.
+Read current resource authority before starting Docker. Use Python3.14.8, uv0.12.5
+and committed `uv.lock`; checks call `uv sync --frozen --all-groups`. No model login
+or real Odoo credential is needed. Keep evidence and candidates outside the checkout
+using owner-paths/current task guidance. Use a new directory for each candidate.
+All native scripts resolve their project from their own path, so an absolute
+invocation works from another CWD.
 
-Use Python 3.14+ and the lockfile: `uv sync --frozen --all-groups` when dependencies
-need preparation. An existing environment can be identified cheaply with
-`.venv/bin/godoo-mcp-server --version` and `importlib.metadata.version` for `fastmcp`
-and `mcp`. The console command and `python -m godoo_mcp_server` run the same entrypoint.
-`HOST` and `PORT` select the listener; use an owned loopback port for local trials.
+Record source SHA, tracked patch and untracked input identity, lock/tool versions,
+command exits and test selection. `candidate.json` records these plus wheel hash,
+metadata version, tested image ID/archive hash and Odoo proof hashes. A local dirty
+candidate is reproducible only with its retained patch and untracked files. Later
+source changes invalidate it; rerun package and Odoo checks for the new candidate.
 
-Read current owner resource restrictions before launching Docker or builds. With a
-restricted host, exercise the lightweight HTTP path and reuse attributable CI
-results; leave deferred real-Odoo/container/client trials explicitly unexecuted.
+## Choose and drive the boundary
 
-## Choose the proof
+From the checkout root, substitute your external paths:
 
-| Requested behavior | Supported path and observation |
-| --- | --- |
-| Fresh independent requests, discovery, metadata errors, request IDs, bundled skill resources | Follow [the lightweight HTTP trial](references/http-smoke.md). This runs the actual server process without Odoo and does not prove tool authentication or writes. |
-| Odoo primitives, per-request users/ACLs, safe errors, cancellation and ambiguous writes | `uv run --frozen pytest -m integration tests/integration/test_vertical.py --tb=short`. Integration fixtures force Odoo18, query its actual major version and use disposable `TestHarness` containers. |
-| Installed package and built-image operation | Follow the package/container commands below and inspect both imports/resources and an actual tool result. |
-| Claude Code actually invokes a write | The opt-in agent test below requires runnable/authenticated Claude Code and incurs a model call. Discovery alone does not establish invocation. |
-
-For source-level regression checks use the existing suite:
-
-```bash
-uv run --frozen ruff check .
-uv run --frozen ruff format --check .
-uv run --frozen mypy --strict src/
-uv run --frozen pytest --tb=short
+```sh
+scripts/check.py offline --evidence-dir "$evidence/offline"
+scripts/check.py package --candidate-dir "$evidence/candidate"
+ODOO_VERSION=18.0 scripts/check.py odoo18 --candidate-dir "$evidence/candidate"
 ```
 
-Default pytest excludes both integration and E2E; its pass count is not real-Odoo
-or client acceptance. `tests/conftest.py` also supplies protocol metadata/headers
-for convenience: use raw HTTP or `AsyncClient.post` directly when checking malformed
-or absent envelopes, as the transport tests do.
+- `offline`: full Ruff lint/format, strict source mypy, default pytest, and a real
+  loopback HTTP subprocess trial. Default pytest excludes integration and E2E.
+- `package`: build one wheel, install frozen runtime dependencies and that wheel
+  into an isolated consumer outside source, check import origin/metadata/CLI,
+  bundled topics/provenance/license and absence of editable dependencies. Drive
+  real HTTP with the installed interpreter, then discard only that consumer.
+- `odoo18`: require the preceding candidate's unchanged source/lock/wheel; fail
+  missing Docker. Build one unique image from that wheel, verify actual Odoo18,
+  run the full vertical suite and the exact prebuilt image's HTTP tool test.
+  Reject zero tests, skips, failures and wrong majors. Export that tested image
+  to `image.tar`, record hashes and remove only the invocation's unique image tag.
 
-## Real Odoo and interrupted writes
+The offline/installed HTTP driver is `scripts/http_probe.py`; its public requests
+and observations are described in [the HTTP recipe](references/http-smoke.md).
+It clears Odoo fallback credentials, checks health with a deadline, then exercises
+independent discovery, all bundled resource/tool topics, caller request IDs,
+missing credentials and invalid envelopes. `http.json` retains responses and
+`server.log` survives exact-PID teardown. Canonical POST is `/mcp`; `/mcp/` redirects.
+Health alone is not MCP readiness. No-Odoo HTTP trials prove no authenticated tool
+effects. For focused source regressions the equivalent `uv run --frozen pytest`
+commands remain available; they do not replace the required check family.
 
-Docker CLI/daemon and image access are prerequisites. `tests/integration/conftest.py`
-owns Odoo18 plus PostgreSQL, an administrator and a portal user. Distinct containers
-isolate its `test_odoo` database from other runs. Server process fixtures use
-independent ports and logs under pytest's temporary directory.
+## Real Odoo, permissions and interrupted writes
 
-Use `-k` to select affected journeys when a full integration run adds no evidence.
-Inspect `tests/integration/test_vertical.py` for the current test names. Its real
-Odoo commit relay forwards actual RPC and withholds/drops only the marked reply;
-it is not a replacement Odoo server. Lost replies, keepalive, caller disconnect
-and process kill/restart are distinct checks. Preserve independent database
-readback showing one committed row, exactly one forwarded write, cleanup, later
-two-user identity/ACL calls and correlated uncertainty telemetry where the process
-survives. A killed process cannot emit a finished event. Never retry a possibly
-committed write merely to obtain a successful response.
+Only use owned disposable Docker resources. `tests/odoo_proof.py` selects18
+explicitly and queries `common.version`; never trust an image tag as an observation.
+Both required harnesses install `base,mail` without shared snapshots and record
+actual Odoo/Postgres container IDs, image IDs/digests and network IDs in
+`odoo-facts.jsonl`. Distinct containers isolate each `test_odoo` database.
+The required check clears ambient Odoo/seed credentials and runs suites serially.
+An explicit17 is rejected before provisioning.
 
-After an unexpected failure, inspect the owned server/container logs and recheck
-health and Odoo readiness before interpreting a timeout. Retain failed evidence;
-classify an environment or harness failure separately from a product regression.
+`tests/integration/test_vertical.py` covers real tools, CRUD/readback, mail,
+attachments, admin/portal identities and ACL differences, safe public errors and
+request-correlated telemetry. The owned process path checks actual HTTP requests
+and per-request credentials. The real-Odoo commit relay withholds or drops only
+the reply: it never replaces the Odoo write with a fake operation. For drop,
+client disconnect, process kill/restart and SSE keepalive, preserve independent
+readback of exactly one committed row and exactly one forwarded write. Never retry
+a possibly committed mutation merely to get a successful reply. A killed process
+cannot emit a finished event.
 
-## Packages, containers and optional client
+The image fixture requires `MCP_CANDIDATE_IMAGE` (an exact prebuilt image) and
+`MCP_EXPECTED_VERSION`. The native caller supplies both. It never builds/deletes
+a caller's image; it checks the running image ID, non-root UID, installed version,
+health and a nonempty real `record_search` result against observed18.
 
-When builds are permitted, `.github/workflows/ci.yml` is the maintained packaging
-path: `uv build`, install the wheel into an isolated target, verify the import and
-bundled `skills/SKILL.md`, build the Dockerfile, check `/healthz`, then run:
+After surprising failures, inspect retained MCP/relay logs and recheck the owned
+instance's health/Odoo readiness before classifying environment, harness or product
+failure. Preserve failed evidence. Do not weaken expected behavior to pass.
 
-```bash
-ODOO_VERSION=18.0 uv run --frozen pytest -m e2e tests/e2e/test_docker_image.py --tb=short
-```
+## CI, promotion and optional coverage
 
-This test builds an image and calls `record_search` through real HTTP against a
-real Odoo Testcontainer. It needs no Claude login. If the exact Odoo version matters,
-retain the server version observation as well as the requested image/version.
-The E2E image tag is shared (`godoo-mcp-server:e2e-test`): serialize this module on
-one Docker daemon so one run cannot remove another's image.
+`.github/workflows/ci.yml` is both authoritative PR/push validation on develop/main
+(no path filter) and the release workflow's same-run reusable validator. Job
+`required` runs always and accepts exactly `offline,package,odoo18`, each success.
+`tested-candidate` contains the tested wheel, image archive and manifest. The
+manual publish workflow resolves a version-matching tag reachable from main,
+validates that exact SHA, checks candidate identities before credentials and again
+before promotion, and loads/pushes the tested image rather than rebuilding it.
+`publish` defaults false. Both PyPI and TestPyPI are external publication.
+Hosted runs, branch protections, environment protections and registry acceptance
+require separate readback; source configuration/local predicates do not prove them.
 
-For an authorized, billable Claude Code write trial:
+Optional19 is explicit: manual `qualify19=true` depends on successful required18
+and consumes the same wheel/image/archive/lock. Locally `scripts/check.py odoo19`
+rejects candidates without successful18; it needs separate resource authority.
+It is outside the ordinary18 gate, fails honestly when requested, and remains
+unqualified until actually executed. Never start19 in parallel with18.
 
-```bash
+Billable Claude remains a separate explicitly authorized trial:
+
+```sh
 ODOO_VERSION=18.0 uv run --frozen pytest -m e2e tests/e2e/test_agent_write_flow.py --tb=short
 ```
 
-The test uses a temporary MCP config, `--strict-mcp-config`, scoped allowed tools
-and independent Odoo readback of the unique created category. Record client version,
-actual result and skips; absent authentication is unverified coverage. This path
-does not establish Claude.ai/Desktop OAuth or managed adapter onboarding.
+It requires runnable/authenticated Claude Code, temporary strict MCP config and
+independent readback. Authentication skips are unverified client coverage. It is
+never part of required CI, and proves no other client's acceptance.
 
-## Evidence, cleanup and upkeep
+## Cleanup and upkeep
 
-Retain commands, revision, results and relevant process/relay logs before temporary
-state disappears (`--basetemp` can place pytest logs in a unique owned evidence
-subdirectory). For CI, verify `headSha`, event, job conclusions and actual test
-summaries, not a green badge alone. Wheel SHA256 and image ID/digest need their
-source revision; an ephemeral CI image ID is not a published artifact.
+Fixtures stop only their own PIDs/containers/networks; the native image builder
+removes only its UUID tag. The candidate archive/wheel and external logs remain.
+After interruption, use recorded IDs for cleanup; never prune the daemon or touch
+another run's tags/worktrees. Confirm owned IDs are gone and evidence is readable.
 
-Fixtures normally stop their processes and discard the disposable Odoo/PostgreSQL
-state; the image test stops its own container and removes its test tag. After an
-interruption, inspect only this run's recorded PIDs/container IDs and clean up those
-resources. Preserve evidence outside the discarded database/container. Confirm it
-is still readable after teardown. Builds and tests do not authorize publication,
-merging, deployment, external credentials or Cloudflare resources.
-
-For changed interfaces or a requested coverage audit, compare the affected recipe,
-fixture, entrypoint and CI step. Correct proven instruction drift; repair an owned
-harness gap and exercise that path; preserve/capture a product regression through
-`~~capture` without weakening its expected behavior. Report exercised, skipped and
-unreachable paths separately. Keep verification routing in project agent guidance
-and any private `~~verification` binding pointed here.
+For interface/check changes, inspect affected recipes, source, fixtures and
+workflow callers. Repair proven instruction drift or owned harness gaps and
+re-exercise the actual native caller. Preserve product regressions and return
+findings through the project's work procedure within the task's write authority.
+Run skill-creator validation and inspect references/discovery after authoring.
+Provenance acknowledgment follows mafe-si-update only after final review, real
+public-boundary trials and safe ignored local config/runtime prerequisites.
+Report exercised, skipped, unreachable and externally unverified coverage separately.

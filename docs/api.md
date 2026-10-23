@@ -1,6 +1,6 @@
 # MCP API in this checkout
 
-The app exposes Streamable HTTP at `/mcp/` and unauthenticated `GET /healthz`.
+The app exposes Streamable HTTP at `/mcp` and unauthenticated `GET /healthz`.
 [Credentials](../README.md#credentials-and-network-boundary) apply to every other
 HTTP path. This source targets MCP `2026-07-28`, with independent requests and no
 session ID. For raw HTTP, send `Content-Type: application/json`,

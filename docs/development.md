@@ -8,7 +8,6 @@ uv run --frozen ruff check .
 uv run --frozen ruff format --check .
 uv run --frozen mypy --strict src/
 uv run --frozen pytest --tb=short
-node --test .github/scripts/notify-adapter.test.cjs
 ```
 
 Default pytest excludes both `integration` and `e2e`. Unit/transport checks use
@@ -16,24 +15,35 @@ doubles and do not establish real Odoo effects or client acceptance. For
 documentation-only changes, inspect the documented source, check affected links
 and run `git diff --check`; product tests are not needed merely for wording.
 
-## Verification routes
+## Native candidate checks
 
-Use [mcp-verification](../.agents/skills/mcp-verification/SKILL.md) for maintained
-commands, isolation and evidence. Choose the smallest relevant boundary:
+Use an external evidence directory and a new candidate directory:
 
-| Boundary | Path |
-| --- | --- |
-| MCP discovery, envelope errors and static guidance without Odoo | [Lightweight HTTP recipe](../.agents/skills/mcp-verification/references/http-smoke.md) |
-| Real Odoo identities, ACLs, effects and interrupted writes | `uv run --frozen pytest -m integration tests/integration/test_vertical.py --tb=short` |
-| Built image and real Odoo | `ODOO_VERSION=18.0 uv run --frozen pytest -m e2e tests/e2e/test_docker_image.py --tb=short` |
-| Authorized billable Claude Code write trial | `ODOO_VERSION=18.0 uv run --frozen pytest -m e2e tests/e2e/test_agent_write_flow.py --tb=short` |
+```sh
+scripts/check.py offline --evidence-dir "$evidence/offline"
+scripts/check.py package --candidate-dir "$evidence/candidate"
+ODOO_VERSION=18.0 scripts/check.py odoo18 --candidate-dir "$evidence/candidate"
+```
 
-The latter three need Docker and disposable Odoo/Postgres; the agent trial also
-needs an authenticated `claude` CLI and incurs model calls. Inspect fixture skips
-before interpreting results. Run heavy suites serially within current resource
-limits; the image test uses a shared tag. Retain safe evidence outside disposable
-state and stop only trial-owned resources. Lost write replies require independent
-readback before retry; never retry solely to obtain a successful response.
+The package command builds one wheel, installs frozen runtime dependencies and
+that exact wheel in an isolated consumer, verifies origin/version/CLI/resources,
+and drives real HTTP. The Odoo command checks the unchanged candidate identity,
+builds one unique image from that wheel, exercises real Odoo18 identities/ACLs and
+interrupted writes, then the exact image's real HTTP tool result. It records
+observed majors, container/image IDs, wheel/archive hashes and suite reports.
+Empty/skipped required suites, unavailable Docker and wrong majors fail.
+No Claude login is needed. Native scripts work by absolute path from another CWD.
+
+Use [mcp-verification](../.agents/skills/mcp-verification/SKILL.md) for boundary
+selection, focused HTTP diagnosis, evidence and cleanup. Default pytest is
+Docker-free. Docker suites need disposable resource authority; the separate
+`test_agent_write_flow.py` is an explicitly authorized billable Claude trial,
+excluded from required checks. Lost write replies need independent readback
+before retry. Stop only trial-owned resources; retain failed evidence.
+
+Optional Odoo19 is available through manual CI `qualify19=true`, or the native
+`odoo19` mode after successful18 for the same candidate. It consumes the same
+wheel/image/lock, never runs in parallel with18, and is unqualified until executed.
 
 ## Source map
 
@@ -59,52 +69,34 @@ content and preserve the bundle's distinct documentation license.
 
 ## Packaging and release configuration
 
-`pyproject.toml` declares a single `uv_build` package and the console entrypoint
-`godoo-mcp-server = godoo_mcp_server.__main__:main`. `uv build` creates distributions;
-inspect the installed wheel when changing packaged resources. The Dockerfile
-installs non-editably and copies the virtual environment into a non-root runtime
-stage, so guidance must load without the source tree.
+`pyproject.toml` declares one `uv_build` package and console entrypoint
+`godoo-mcp-server = godoo_mcp_server.__main__:main`. Version assertions derive
+from metadata/candidate manifest. Packaged consumer guidance keeps its own
+manifest, provenance and CC0 notice; repository maintenance skills are not served.
 
-The [CI workflow](../.github/workflows/ci.yml) runs lint, formatting, strict typing,
-default pytest and sender guards, plus separate package/container and Odoo
-integration jobs. The [publish workflow](../.github/workflows/publish.yml) builds
-distributions: manual dispatch selects TestPyPI, while `v*` tags select PyPI and
-GHCR. Registry publishing uses Trusted Publisher/OIDC with the matching `testpypi`
-or `pypi` GitHub environment; GHCR uses the workflow token. These describe
-configuration, not proof of a release or a ready registry/environment.
+The Dockerfile installs the candidate wheel into locked runtime dependencies and
+copies only the virtual environment into a pinned, non-root Python3.14 runtime.
+`check.py odoo18` prepares its minimal build context (metadata, lock and wheel),
+builds once, tests that ID and exports the same image bytes for later promotion.
 
-Release, registry setup and deployment require the owning task's authority.
-Check actual refs, artifact contents and outcomes rather than inferring
-availability from the changelog or configured workflows.
+The [CI workflow](../.github/workflows/ci.yml) runs on all develop/main PRs and
+pushes, plus manual/reusable invocations. Its stable `required` aggregate rejects
+anything except success from exactly `offline`, `package` and `odoo18`. All
+installs/checks are frozen. Candidate reports keep source, patch/untracked
+identity, version, lock/tool identities and hashes. Local dirty checks are valid
+only for those exact input bytes; publication requires a clean tagged commit.
 
-## Adapter update proposals
+The [manual publish workflow](../.github/workflows/publish.yml) must be dispatched
+from main with a `v<metadata-version>` tag reachable from main. It resolves an
+immutable SHA and invokes the same validator in that run. `publish=false` is the
+default. Credential-free preflight verifies the source/ref/version, wheel and
+image archive hashes and the loaded tested image ID. Final promotion repeats
+verification and consumes that wheel and image without any rebuild. Production
+container tags use the immutable package version. TestPyPI is also publication;
+its choice does not publish a production container.
 
-After `CI` succeeds for a push to the current `develop` head,
-`.github/workflows/notify-adapter.yml` validates the source repository, workflow,
-run attempt and all three required CI jobs. It sends `repository_dispatch` to
-`godoo-dev/godoo-cf-sudo-mcp` with event type `mcp-source-update` and payload:
-
-```json
-{"source_sha":"<40 lowercase hex>","ci_run_id":123,"ci_run_attempt":1}
-```
-
-The adapter's trusted `.github/workflows/update-mcp.yml` independently validates
-that evidence and owns the source manifest and deduplicated update PR. This sender
-never checks out the candidate, executes its artifacts, creates an adapter PR or
-uses Cloudflare credentials. A race with a newer upstream commit is rechecked by
-the receiver; stale evidence is not permission to promote it. Review, adapter CI
-and its test-only deployment guards remain on the adapter side.
-
-Provision repository variable `MCP_UPDATE_APP_ID` and secret
-`MCP_UPDATE_APP_PRIVATE_KEY` in this repository and the adapter repository for a
-GitHub App installed **only on the adapter repository**, with Contents and Pull
-requests write permissions. The sender requests only an adapter Contents write
-token (required for repository dispatch); the receiver requests the permissions
-needed to create its PR. Tokens are short-lived and revoked by the token action.
-Activation requires the receiver on adapter `main` and this sender on MCP
-`develop`, as well as App provisioning in both repositories. Missing provisioning
-fails explicitly; there is no PAT fallback. Configuration and offline checks do
-not establish a successful hosted dispatch or deployment.
-
-Run the dependency-free sender checks with
-`node --test .github/scripts/notify-adapter.test.cjs`; ordinary CI includes them.
+PyPI/TestPyPI use protected environments and Trusted Publisher/OIDC; GHCR uses
+the workflow token only in the final promotion job. These are prepared source
+controls, not proof of a hosted run, branch/environment protection, configured
+Trusted Publisher or registry acceptance. This work does not authorize publishing,
+credentials, deployment or remote settings changes.

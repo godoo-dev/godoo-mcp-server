@@ -10,12 +10,12 @@ from godoo.testcontainers import TestHarness
 from httpx import ASGITransport, AsyncClient
 
 from godoo_mcp_server.server import create_app
+from tests.odoo_proof import observe, requested_major
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     import pytest
-    from godoo.testcontainers import StartedOdooContainer
 
 STANDARD_MCP_HEADERS: dict[str, str] = {
     "content-type": "application/json",
@@ -32,14 +32,16 @@ FAKE_CRED_HEADERS: dict[str, str] = {
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def odoo_harness() -> AsyncGenerator[StartedOdooContainer]:
+async def odoo_harness() -> AsyncGenerator[TestHarness]:
     """Start one real Odoo container for tests that need Docker."""
+    major = requested_major()
     async with TestHarness(
         modules=["base", "mail"],
-        snapshot=True,
+        snapshot=False,
         database="test_odoo",
         admin_password="admin",
     ) as h:
+        await observe(h, major)
         yield h
 
 
