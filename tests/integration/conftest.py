@@ -129,7 +129,7 @@ _SECOND_USER_PASSWORD = "TestPass123!"
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def odoo_harness() -> AsyncGenerator[TestHarness]:
-    """Acceptance runs always use disposable Odoo 18, independent of library defaults."""
+    """Use disposable Odoo18, or explicitly qualified19, regardless of library defaults."""
     major = requested_major()
     async with TestHarness(
         modules=["base", "mail"],
@@ -149,13 +149,16 @@ async def second_user_credentials(odoo_harness: TestHarness) -> tuple[str, str]:
         [["module", "=", "base"], ["name", "=", "group_portal"]],
         fields=["res_id"],
     )
+    # Odoo19 renamed the explicitly assigned group relation; keep the portal ACL
+    # fixture equivalent across both observed majors rather than omitting groups.
+    group_field = "group_ids" if requested_major() == 19 else "groups_id"
     user_id = await odoo_harness.client.create(
         "res.users",
         {
             "name": "Integration Portal User",
             "login": _SECOND_USER_LOGIN,
             "password": _SECOND_USER_PASSWORD,
-            "groups_id": [(6, 0, [groups[0]["res_id"]])],
+            group_field: [(6, 0, [groups[0]["res_id"]])],
         },
     )
     assert isinstance(user_id, int) and user_id > 0
