@@ -42,7 +42,9 @@ fallback credentials. Restrict ingress to trusted callers; a managed gateway mus
 enforce identity and replace caller-supplied credential headers.
 
 `HOST` defaults to `0.0.0.0` and `PORT` to `8000`. The [Dockerfile](Dockerfile)
-builds from source and runs as a non-root user. Its health check probes port 8000;
+installs the candidate wheel and runs as a non-root user. Use the
+[native candidate checks](docs/development.md#native-candidate-checks) to prepare its
+build context. Its health check probes port 8000;
 configure a matching probe when overriding the container port.
 
 ## Use and develop

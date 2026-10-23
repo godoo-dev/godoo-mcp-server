@@ -144,11 +144,26 @@ def odoo(directory: Path, major: int) -> None:
     execute("docker", "info", "--format", "{{.ServerVersion}}")
     tag = f"godoo-mcp-server:candidate-{uuid.uuid4().hex}"
     owned_image = major == 18
-    if not owned_image:
-        # A downloaded archive preserves the exact18-tested image bytes.
-        execute("docker", "load", "--input", str(directory / manifest["image"]["archive"]["file"]))
-        tag = manifest["image"]["id"]
+    cleanup_tag = tag if owned_image else None
     try:
+        if not owned_image:
+            # Loading may add the archive's tag. Preserve a tag that existed before this run.
+            archive_tag = manifest["image"]["tag"]
+            existing = subprocess.run(
+                ["docker", "image", "inspect", archive_tag], capture_output=True
+            )
+            if existing.returncode == 0:
+                if json.loads(existing.stdout)[0]["Id"] != manifest["image"]["id"]:
+                    raise ValueError("Archive tag conflicts with a caller-owned image")
+            else:
+                cleanup_tag = archive_tag
+                execute(
+                    "docker",
+                    "load",
+                    "--input",
+                    str(directory / manifest["image"]["archive"]["file"]),
+                )
+            tag = manifest["image"]["id"]
         if owned_image:
             with tempfile.TemporaryDirectory(prefix="mcp-image-") as temporary:
                 context = Path(temporary)
@@ -240,9 +255,9 @@ def odoo(directory: Path, major: int) -> None:
                 + "\n"
             )
     finally:
-        if owned_image:
-            # Only this invocation's unique tag; caller-supplied fixture images are retained.
-            subprocess.run(["docker", "image", "rm", tag], check=False)
+        if cleanup_tag:
+            # Only a tag created by this invocation; caller-supplied fixture images are retained.
+            subprocess.run(["docker", "image", "rm", cleanup_tag], check=False)
 
 
 def main() -> None:
