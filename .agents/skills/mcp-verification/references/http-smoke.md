@@ -1,5 +1,15 @@
 # Lightweight real-HTTP trial
 
+The maintained executable is:
+
+```sh
+scripts/http_probe.py --python "$PWD/.venv/bin/python" --evidence-dir "$evidence/http"
+```
+
+`check.py offline` and `check.py package` invoke this same driver. It clears
+ambient Odoo fallbacks and records responses/server logs before reaping its PID.
+The raw recipe below supports focused diagnosis.
+
 This exercises an owned server process with the current environment. It needs no
 Docker, Odoo instance, model call or external account. Use this path for protocol
 and bundled-resource checks; use Testcontainers for authenticated tools and writes.

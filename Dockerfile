@@ -18,13 +18,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --frozen --no-dev --no-install-project
 
-# Copy full source tree, then install project non-editable.
-# --no-editable embeds the package (+ skill .md files) into .venv/lib/python3.14/site-packages/
-# so importlib.resources.files("godoo_mcp_server") resolves correctly in the runtime stage
-# (RESEARCH Pitfall 2: omitting --no-editable breaks importlib.resources in multi-stage builds).
-COPY . /app
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-editable
+# Consume the already tested candidate wheel; the build context contains no source.
+# scripts/check.py prepares this context from its immutable candidate directory.
+COPY dist/*.whl /candidate/
+RUN uv pip install --python /app/.venv/bin/python --no-deps /candidate/*.whl
 
 # ---- runtime ----
 # T-05-11: runtime stage copies only .venv — no uv binary, no source tree, no build cache.
