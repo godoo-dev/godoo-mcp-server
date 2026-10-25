@@ -6,6 +6,7 @@ Provides: mail_post_message, mail_log_note, mail_list_messages,
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context  # noqa: TC002
@@ -176,10 +177,7 @@ async def mail_schedule_activity(
     note: str | None = None,
     user_id: int | None = None,
 ) -> dict[str, object]:
-    """Schedule an activity on a record. Calls activity_schedule on mail.activity.mixin.
-
-    # [ASSUMED A1] activity_schedule — verify method name against integration container.
-    """
+    """Schedule one activity and normalize Odoo's singleton recordset RPC result."""
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
@@ -193,6 +191,13 @@ async def mail_schedule_activity(
             if user_id is not None:
                 kwargs["user_id"] = user_id
             result = await client.call(model, "activity_schedule", [res_id], kwargs)
+            # Odoo 18 RPC serializes the returned recordset as its representation.
+            # Accept only the single activity returned for this single record;
+            # an unrecognized result remains an unknown write, never a retry.
+            if isinstance(result, str):
+                recordset = re.fullmatch(r"mail\.activity\(([1-9][0-9]*),?\)", result)
+                if recordset is not None:
+                    result = int(recordset.group(1))
             return {"activity_id": int(result)}
     except OdooError as e:
         raise safe_tool_error(e, write_may_have_dispatched=True) from None

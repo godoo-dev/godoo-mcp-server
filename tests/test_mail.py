@@ -15,6 +15,11 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, cast
+from unittest.mock import AsyncMock
+
+import pytest
+
+from godoo_mcp_server.tools import mail
 
 if TYPE_CHECKING:
     from httpx import AsyncClient
@@ -168,3 +173,60 @@ async def test_mail_tools_in_tools_list(mcp_client: AsyncClient) -> None:
     }
     missing = expected - tool_names
     assert not missing, f"Missing mail tools in tools/list: {missing}"
+
+
+@pytest.mark.parametrize(
+    ("rpc_result", "expected_id"),
+    [
+        (41, 41),
+        ("41", 41),
+        ("mail.activity(41,)", 41),
+        ("mail.activity(41)", 41),
+        ("mail.activity()", None),
+        ("mail.activity(41, 42)", None),
+        ("mail.message(41,)", None),
+        ("mail.activity(0,)", None),
+        ("mail.activity(-41,)", None),
+        ("mail.activity(41,) private-suffix", None),
+        (None, None),
+    ],
+)
+async def test_activity_result_and_no_replay(
+    mcp_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    rpc_result: object,
+    expected_id: int | None,
+) -> None:
+    """Exercise MCP's response and uncertainty handling after one schedule call."""
+    client = AsyncMock()
+    client.call.return_value = rpc_result
+    monkeypatch.setattr(mail, "OdooClient", lambda _config: client)
+    response = await mcp_client.post(
+        "/mcp",
+        json=_tool_call_body(
+            "mail_schedule_activity",
+            {
+                "model": "res.partner",
+                "res_id": 7,
+                "activity_type_id": 3,
+                "date_deadline": "2026-12-31",
+            },
+        ),
+    )
+    assert response.status_code == 200
+    result = _parse_sse_json(response.text)["result"]
+    assert isinstance(result, dict)
+    if expected_id is None:
+        assert result["isError"] is True
+        assert "write outcome is unknown; do not retry automatically" in response.text
+        assert "private-suffix" not in response.text
+    else:
+        assert result.get("isError") is not True
+        assert json.loads(result["content"][0]["text"]) == {"activity_id": expected_id}
+    client.call.assert_awaited_once_with(
+        "res.partner",
+        "activity_schedule",
+        [7],
+        {"activity_type_id": 3, "date_deadline": "2026-12-31"},
+    )
+    client.aclose.assert_awaited_once()
