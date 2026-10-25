@@ -149,6 +149,54 @@ async def test_mail(odoo_mcp: httpx.AsyncClient) -> None:
     assert result["message_id"] > 0
 
 
+async def test_activity_schedule_result_and_completion(
+    odoo_mcp: httpx.AsyncClient, odoo_harness: Any
+) -> None:
+    """A real Odoo18 schedule creates exactly one activity and returns its ID."""
+    partner_id = _value(
+        await _call(
+            odoo_mcp,
+            "record_create",
+            model="res.partner",
+            values={"name": "Activity result regression"},
+        )
+    )["id"]
+    activity_type = await odoo_harness.client.search_read(
+        "ir.model.data",
+        [["module", "=", "mail"], ["name", "=", "mail_activity_data_todo"]],
+        fields=["res_id"],
+    )
+    assert len(activity_type) == 1
+    # Never replay scheduling if the reply is lost or cannot be parsed.
+    result = await _call(
+        odoo_mcp,
+        "mail_schedule_activity",
+        model="res.partner",
+        res_id=partner_id,
+        activity_type_id=activity_type[0]["res_id"],
+        date_deadline="2026-12-31",
+        note="Disposable regression activity",
+    )
+    domain = [["res_model", "=", "res.partner"], ["res_id", "=", partner_id]]
+    activities = await odoo_harness.client.search_read("mail.activity", domain, fields=["id"])
+    assert len(activities) == 1
+    activity_id = _value(result)["activity_id"]
+    assert activity_id == activities[0]["id"]
+    listed = _value(
+        await _call(odoo_mcp, "mail_list_activities", model="res.partner", res_id=partner_id)
+    )
+    assert [row["id"] for row in listed["activities"]] == [activity_id]
+    completed = _value(await _call(odoo_mcp, "mail_mark_activity_done", activity_id=activity_id))
+    assert completed["success"] is True
+    assert await odoo_harness.client.search_read("mail.activity", domain, fields=["id"]) == []
+    assert (
+        _value(await _call(odoo_mcp, "record_delete", model="res.partner", ids=[partner_id]))[
+            "success"
+        ]
+        is True
+    )
+
+
 async def test_attachments(odoo_mcp: httpx.AsyncClient) -> None:
     payload = base64.b64encode(b"MCP attachment roundtrip").decode()
     uploaded = _value(
