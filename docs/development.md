@@ -15,6 +15,13 @@ doubles and do not establish real Odoo effects or client acceptance. For
 documentation-only changes, inspect the documented source, check affected links
 and run `git diff --check`; product tests are not needed merely for wording.
 
+Retain requests and remaining acceptance through
+[mcp-capture](../.agents/skills/mcp-capture/SKILL.md). Before a user/operator
+contract change, use [mcp-docs](../.agents/skills/mcp-docs/SKILL.md) to prepare the
+smallest useful proposed guide or example. After verification, reconcile affected
+documentation with observed behavior before handback. Canonical knowledge and
+work belong to this project; see [ownership](ownership.md).
+
 ## Native candidate checks
 
 Use an external evidence directory and a new candidate directory:
