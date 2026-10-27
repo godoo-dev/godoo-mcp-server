@@ -12,19 +12,26 @@ Repository maintenance skills remain separate from the served bundle. Consumer
 instructions belong in `src/godoo_mcp_server/skills/`; preserve their package
 paths, manifest, provenance and licenses.
 
-Keep useful developer/API guidance in `docs/`. Work and evidence belong in the
-locally bound `~~project tracker`, shared across godoo-dev; use the installed
-project capture and mafe-si procedures. Keep private paths in local bindings and
-retained evidence outside source using owner-paths. Perficio is
-dormant. GSD commands, HQ journals and old adoption gates are not required workflows.
+Use [mcp-capture](.agents/skills/mcp-capture/SKILL.md) for this repository's GitHub
+work, incoming requests, triage, retrieval and deferred observations. Use
+[mcp-docs](.agents/skills/mcp-docs/SKILL.md) for canonical project knowledge in
+`README.md` and `docs/`, including proposed guidance before implementation and
+reconciliation after verification. Read [project ownership](docs/ownership.md)
+for boundaries and intake conventions. Private paths/configuration and retained
+evidence stay outside tracked source using owner-paths. Checkout-local category
+bindings override inherited HQ/shared-tracker routes; neither HQ nor Perficio is
+an operational prerequisite.
 
 Use focused offline checks for documentation. Container/Odoo tests and billable
 agent trials need the task's corresponding authority and resources. Distinguish
 source, tests, package publication, runtime and actual client acceptance. Passing
 checks grant no merge, publication, deployment or business-write authority.
 
-Preserve other worktrees, unique work and private bindings. Coordinate overlapping
-ownership through the locally designated Fleet environment coordinator;
-established direct exchanges keep their direct path. Satellite engineering and
-deployment remain with their owners. HQ owns portfolio targets, including the
-separation from Atlas knowledge access and the commercial gateway.
+Preserve dirty files, other worktrees, unique work, resource holdings and private
+bindings. Report overlapping ownership, dependencies and unresolved portfolio
+decisions to Marc in the current conversation. Do not contact other agents,
+launch delegates, poll mailboxes or use trackers/shared files as agent messages.
+Each project owns its engineering and releases; consuming applications retain
+their deployment and business acceptance. The public
+[organization overview](https://github.com/godoo-dev/.github/blob/main/profile/README.md)
+provides family orientation; normal project operation requires no online fetch.
