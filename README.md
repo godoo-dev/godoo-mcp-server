@@ -61,6 +61,9 @@ The server does not load a `.env` file automatically.
 result exceeds `max_return_bytes` (default **500 UTF-8 JSON bytes**). Use `0` to
 always request a URL, or `null` to return the full result inline. Small inline
 results need no storage; an oversized result without working storage fails safely.
+`attachments_download` always uses this storage for nonempty attachments, returning
+a signed URL and file metadata instead of inline base64. It uses the same timing
+settings and fails safely when storage is unavailable.
 
 For the current **Cloudflare R2** deployment:
 
@@ -97,7 +100,7 @@ limits and download examples.
 ## Use and develop
 
 - [MCP API](docs/api.md): protocol, exact tool arguments and resource limits.
-- [Private result delivery](docs/exports.md): R2, S3 and GCS configuration for record downloads.
+- [Private result delivery](docs/exports.md): R2, S3 and GCS configuration for record and attachment downloads.
 - [Development](docs/development.md): checks, source layout, packaging and candidate validation.
 - [Bundled Odoo guidance](src/godoo_mcp_server/skills/SKILL.md): consumer workflows,
   also available through `guidance_get()` and `skill://odoo/SKILL.md`.

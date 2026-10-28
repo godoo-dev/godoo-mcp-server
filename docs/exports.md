@@ -7,6 +7,7 @@ Configure an existing private bucket for artifact delivery from
 [obstore](https://developmentseed.org/obstore/latest/) for uploads and temporary
 signed GET URLs across R2, S3 and GCS. Credentials are server configuration;
 callers cannot select providers, buckets, object keys or credentials.
+`attachments_download` uses the same configuration for every nonempty attachment.
 
 The configuration below is a source-level setup example. No live provider or
 deployed caller path has been qualified by this change.
@@ -134,10 +135,28 @@ except Exception:
     raise RuntimeError("Export download failed") from None
 ```
 
-Do not print the receipt, URL, response body or dataset. Parse the saved JSON result
-object in calculation code and return only the requested aggregate or bounded rows.
+Do not print the receipt, URL, response body or dataset. Parse saved record JSON or
+process the saved attachment in calculation code, returning only the requested
+summary or bounded records. Choose `destination` yourself; do not treat the
+attachment's `name` as a trusted filesystem path.
 A successful download proves those bytes were reachable at that moment; it does
 not prove expiry or access isolation. Before rollout, qualify the selected live
 provider and host: checksum/count agreement, private access rejection without a
 capability, a different object's rejection, bearer-access scope, actual configured
 expiry, timed deletion/recovery, and absence of rows in the calling model's context.
+
+## Attachment downloads
+
+`attachments_download(attachment_id=123)` uses the same private storage and
+60 + 30 minute defaults for the original binary. Its receipt includes `id`,
+`name`, `mimetype`, `size_bytes`, `sha256`, `download_url` and expiry/cleanup
+information. Download the URL from calculation code and verify the checksum;
+attachment bytes and base64 are never included in the MCP response. Storage
+is required for nonempty attachments. Empty content retains the existing
+`attachment_has_no_content` error. This replaces the inline base64 response.
+The signed response uses the attachment MIME type (or `application/octet-stream`)
+and an attachment disposition with a safely encoded filename. Objects use random
+`.bin` keys alongside record `.json` keys in the managed namespace; cleanup handles
+both, including objects from earlier processes. The 100 MiB artifact limit applies
+to decoded attachment bytes. No new storage variables or consumer-supplied keys
+are introduced.

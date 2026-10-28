@@ -5,7 +5,6 @@ Provides: attachments_list, attachments_upload, attachments_download.
 
 from __future__ import annotations
 
-import base64
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context  # noqa: TC002
@@ -13,6 +12,7 @@ from fastmcp.server.dependencies import get_http_request
 from godoo.client.client import OdooClient, OdooClientConfig
 from godoo.client.errors import OdooError
 
+from godoo_mcp_server.artifacts import deliver_artifact
 from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
 from godoo_mcp_server.server import mcp
 
@@ -119,11 +119,14 @@ async def attachments_upload(
 
 @mcp.tool(
     name="attachments_download",
-    annotations={"readOnlyHint": True},
+    annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
     description=(
-        "Download an ir.attachment by id, returning content as base64."
+        "Download an ir.attachment by id through a private signed URL."
+        " Returns filename, MIME type, byte size, SHA-256 and expiry/cleanup metadata;"
+        " never returns binary content or base64. Requires configured artifact storage."
+        " Odoo is only read; delivery creates a temporary stored copy."
         " If the attachment has no binary content (empty datas field),"
-        " returns an error dict instead of empty base64."
+        " returns an error dict."
         " attachment_id: numeric id of the ir.attachment record."
     ),
 )
@@ -143,12 +146,14 @@ async def attachments_download(
                 "ir.attachment", [attachment_id], fields=["name", "mimetype"]
             )
             meta: dict[str, Any] = records_meta[0] if records_meta else {}
-            return {
-                "id": attachment_id,
-                "name": meta.get("name", ""),
-                "mimetype": meta.get("mimetype", "application/octet-stream"),
-                "content_base64": base64.b64encode(data).decode(),
-                "size_bytes": len(data),
-            }
     except OdooError as e:
         raise safe_tool_error(e) from None
+    name = meta.get("name") or "attachment"
+    mimetype = meta.get("mimetype") or "application/octet-stream"
+    receipt = await deliver_artifact(
+        data,
+        source={"tool": "attachments_download", "model": "ir.attachment"},
+        filename=name,
+        mimetype=mimetype,
+    )
+    return {**receipt, "id": attachment_id, "name": name, "mimetype": mimetype}

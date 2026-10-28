@@ -1,8 +1,9 @@
-"""Record delivery contracts; also run against Miniflare by `just r2`."""
+"""Artifact delivery contracts; also run against Miniflare by `just r2`."""
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import os
@@ -21,7 +22,7 @@ from obstore.store import MemoryStore
 from godoo_mcp_server import artifacts
 from godoo_mcp_server.artifacts import ArtifactStorage
 from godoo_mcp_server.server import create_app
-from godoo_mcp_server.tools import records
+from godoo_mcp_server.tools import attachments, records
 from tests.test_records import _parse_sse_json, _tool_call_body
 
 
@@ -49,18 +50,52 @@ async def backend(storage, monkeypatch):
         {"id": 1, "name": "PRIVATE-ROW" + "é" * 300, "amount": 1e-7, "total": 1e20}
     ]
     monkeypatch.setattr(records, "OdooClient", Mock(return_value=client))
+    monkeypatch.setattr(attachments, "OdooClient", Mock(return_value=client))
     return client
 
 
 async def call(client, tool="record_search", **arguments):
-    arguments = {
-        "model": "res.partner",
-        **({"ids": [1]} if tool == "record_read" else {}),
-        **arguments,
-    }
+    arguments = (
+        arguments
+        if tool == "attachments_download"
+        else {
+            "model": "res.partner",
+            **({"ids": [1]} if tool == "record_read" else {}),
+            **arguments,
+        }
+    )
     response = await client.post("/mcp", json=_tool_call_body(tool, arguments))
     assert response.status_code == 200
     return _parse_sse_json(response.text)["result"]
+
+
+async def assert_private_download(receipt, content):
+    if not os.environ.get("R2_TEST_ENDPOINT"):
+        return
+    url = receipt["download_url"]
+    async with httpx.AsyncClient() as download:
+        response = await download.get(url)
+        assert response.content == content
+        assert response.headers["cache-control"] == "no-store"
+        if "name" in receipt:
+            assert response.headers["content-type"] == receipt["mimetype"]
+            assert response.headers["content-disposition"].startswith(
+                "attachment; filename*=UTF-8''"
+            )
+        for invalid in [
+            url.split("?")[0],
+            url.replace("3600", "1"),
+            url.replace(receipt["artifact_id"], "0" * 32),
+        ]:
+            assert (await download.get(invalid)).status_code == 403
+        short = await obstore.sign_async(
+            ArtifactStorage.from_env().store,
+            "GET",
+            urlsplit(url).path.split("/", 2)[2],
+            timedelta(seconds=1),
+        )
+        await asyncio.sleep(1.1)
+        assert (await download.get(short)).status_code == 403
 
 
 @pytest.mark.parametrize("tool", ["record_search", "record_read"])
@@ -81,21 +116,34 @@ async def test_delivery_and_exact_byte_boundary(mcp_client, backend, storage, to
         assert datetime.fromisoformat(receipt["delete_after"]) >= expires + timedelta(minutes=30)
         key = f"exports/v1/5400/{receipt['artifact_id']}.json"
         assert await (await obstore.get_async(storage.store, key)).bytes_async() == content
-        if os.environ.get("R2_TEST_ENDPOINT"):
-            url = receipt["download_url"]
-            async with httpx.AsyncClient() as download:
-                response = await download.get(url)
-                assert response.content == content
-                assert response.headers["cache-control"] == "no-store"
-                invalid_urls = [url.split("?")[0], url.replace("3600", "1")]
-                for invalid in invalid_urls:
-                    assert (await download.get(invalid)).status_code == 403
-    if os.environ.get("R2_TEST_ENDPOINT"):
-        short = await obstore.sign_async(storage.store, "GET", key, timedelta(seconds=1))
-        await asyncio.sleep(1.1)
-        async with httpx.AsyncClient() as download:
-            assert (await download.get(short)).status_code == 403
+    await assert_private_download(receipt, content)
     assert (backend.search_read if tool == "record_search" else backend.read).await_count == 5
+
+
+async def test_attachment_binary_delivery(mcp_client, backend, storage, caplog):
+    content = bytes(range(256)) * 8192
+    backend.read_binary.return_value = content
+    backend.read.return_value = [
+        {"name": 'résumé "sample".bin', "mimetype": "application/octet-stream"}
+    ]
+    result = await call(mcp_client, "attachments_download", attachment_id=7)
+    receipt = result["structuredContent"]
+    assert json.loads(result["content"][0]["text"]) == receipt
+    output = json.dumps(result) + caplog.text
+    assert len(output) < 4000 and "content_base64" not in output
+    assert base64.b64encode(content[:1024]).decode() not in output
+    assert receipt["id"] == 7 and receipt["name"] == backend.read.return_value[0]["name"]
+    assert receipt["size_bytes"] == len(content)
+    assert receipt["sha256"] == hashlib.sha256(content).hexdigest()
+    key = f"exports/v1/5400/{receipt['artifact_id']}.bin"
+    assert await (await obstore.get_async(storage.store, key)).bytes_async() == content
+    await assert_private_download(receipt, content)
+    backend.read_binary.assert_awaited_once_with("ir.attachment", 7, "datas")
+    backend.read.assert_awaited_once_with("ir.attachment", [7], fields=["name", "mimetype"])
+    backend.read_binary.return_value = b""
+    assert (await call(mcp_client, "attachments_download", attachment_id=7))[
+        "structuredContent"
+    ] == {"error": "attachment_has_no_content", "id": 7}
 
 
 async def test_query_arguments_and_empty_delivery(mcp_client, backend):
@@ -117,25 +165,32 @@ async def test_invalid_threshold_precedes_odoo(mcp_client, backend, value):
     backend.search_read.assert_not_awaited()
 
 
-@pytest.mark.parametrize("failure", ["access", "config", "size"])
-async def test_failure_never_spills_rows(mcp_client, backend, storage, monkeypatch, failure):
+@pytest.mark.parametrize("failure", ["access", "config", "size", "upload"])
+@pytest.mark.parametrize("tool", ["record_search", "attachments_download"])
+async def test_failure_never_spills_rows(mcp_client, backend, storage, monkeypatch, failure, tool):
     secret = "PROVIDER-SECRET"
+    backend.read_binary.return_value = b"PRIVATE-ROW"
     if failure == "access":
-        backend.search_read.side_effect = OdooAccessError(secret)
+        backend.search_read.side_effect = backend.read_binary.side_effect = OdooAccessError(secret)
     elif failure == "config":
         monkeypatch.setattr(
             ArtifactStorage, "from_env", Mock(side_effect=artifacts.export_error("Invalid storage"))
         )
     elif failure == "size":
         monkeypatch.setattr(artifacts, "MAX_ARTIFACT_BYTES", 1)
-    result = await call(mcp_client)
+    elif failure == "upload":
+        monkeypatch.setattr(obstore, "put_async", AsyncMock(side_effect=RuntimeError(secret)))
+    result = await call(
+        mcp_client, tool, **({"attachment_id": 7} if tool == "attachments_download" else {})
+    )
     assert result["isError"]
     assert secret not in json.dumps(result) and "PRIVATE-ROW" not in json.dumps(result)
     assert [item async for page in obstore.list(storage.store) for item in page] == []
 
 
 @pytest.mark.parametrize("error", [RuntimeError("SECRET"), asyncio.CancelledError()])
-async def test_committed_upload_failure_is_cleaned(storage, monkeypatch, tmp_path, error):
+@pytest.mark.parametrize("filename", [None, "file.bin"])
+async def test_committed_upload_failure_is_cleaned(storage, monkeypatch, tmp_path, error, filename):
     put = obstore.put_async
 
     async def failed_upload(*args, **kwargs):
@@ -147,13 +202,16 @@ async def test_committed_upload_failure_is_cleaned(storage, monkeypatch, tmp_pat
     file.write_bytes(b"private")
     expected = asyncio.CancelledError if isinstance(error, asyncio.CancelledError) else Exception
     with pytest.raises(expected) as caught:
-        await storage.publish(file, "c" * 32)
+        await storage.publish(file, "c" * 32, filename=filename)
     assert "SECRET" not in str(caught.value)
     assert [item async for page in obstore.list(storage.store) for item in page] == []
 
 
 async def test_cleanup_uses_persisted_deadlines(storage):
-    keys = [f"exports/v1/{seconds}/{n * 32}.json" for seconds, n in [(5400, "a"), (600, "b")]]
+    keys = [
+        f"exports/v1/{seconds}/{n * 32}.{suffix}"
+        for seconds, n, suffix in [(5400, "a", "json"), (600, "b", "bin")]
+    ]
     for key in [*keys, "unrelated", "exports/v1/1/not-managed.json"]:
         await obstore.put_async(storage.store, key, b"private")
     objects = {item["path"]: item async for page in obstore.list(storage.store) for item in page}

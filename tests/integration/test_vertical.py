@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 from typing import Any
+from unittest.mock import AsyncMock
 
 import httpx
+import obstore
 import pytest
+from obstore.store import MemoryStore
+
+from godoo_mcp_server.artifacts import ArtifactStorage
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -213,7 +219,19 @@ async def test_activity_schedule_result_and_completion(
     )
 
 
-async def test_attachments(odoo_mcp: httpx.AsyncClient) -> None:
+async def test_attachments(
+    odoo_mcp: httpx.AsyncClient,
+    odoo_clients: Any,
+    odoo_harness: Any,
+    second_user_credentials: tuple[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    storage = ArtifactStorage(MemoryStore())
+    monkeypatch.setattr(ArtifactStorage, "from_env", lambda: storage)
+    monkeypatch.setattr(obstore, "sign_async", AsyncMock(return_value="https://download.test/file"))
+    record_id = await odoo_harness.client.create(
+        "res.partner.category", {"name": "Private attachment"}
+    )
     payload = base64.b64encode(b"MCP attachment roundtrip").decode()
     uploaded = _value(
         await _call(
@@ -221,14 +239,24 @@ async def test_attachments(odoo_mcp: httpx.AsyncClient) -> None:
             "attachments_upload",
             name="integration.txt",
             content_base64=payload,
-            res_model="res.partner",
-            res_id=1,
+            res_model="res.partner.category",
+            res_id=record_id,
             mimetype="text/plain",
         )
     )
     downloaded = _value(await _call(odoo_mcp, "attachments_download", attachment_id=uploaded["id"]))
-    assert downloaded["content_base64"] == payload
-    assert downloaded["size_bytes"] == len(base64.b64decode(payload))
+    content = base64.b64decode(payload)
+    assert "content_base64" not in downloaded
+    assert downloaded["size_bytes"] == len(content)
+    assert downloaded["sha256"] == hashlib.sha256(content).hexdigest()
+    key = f"exports/v1/5400/{downloaded['artifact_id']}.bin"
+    assert await (await obstore.get_async(storage.store, key)).bytes_async() == content
+    async with odoo_clients(
+        username=second_user_credentials[0], password=second_user_credentials[1]
+    ) as portal:
+        denied = await _call(portal, "attachments_download", attachment_id=uploaded["id"])
+    assert denied["isError"] is True
+    assert [item["path"] async for page in obstore.list(storage.store) for item in page] == [key]
 
 
 async def test_identity_acl_and_safe_telemetry(
