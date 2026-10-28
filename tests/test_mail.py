@@ -179,6 +179,11 @@ async def test_mail_tools_in_tools_list(mcp_client: AsyncClient) -> None:
     ("rpc_result", "expected_id"),
     [
         (41, 41),
+        ([41], 41),
+        ([], None),
+        ([41, 42], None),
+        (["41"], None),
+        ([True], None),
         ("41", 41),
         ("mail.activity(41,)", 41),
         ("mail.activity(41)", 41),

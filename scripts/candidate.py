@@ -21,7 +21,7 @@ from email.parser import BytesParser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MANDATORY = {"offline", "package", "odoo18", "archive"}
+MANDATORY = {"offline", "r2", "package", "image", "odoo", "archive"}
 
 
 def run(*args: str, cwd: Path = ROOT) -> str:
@@ -56,18 +56,12 @@ def version() -> str:
     return tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
 
 
-def require_results(results: dict, requested19: bool = False) -> None:
-    expected = MANDATORY | ({"odoo19"} if requested19 or "odoo19" in results else set())
-    if set(results) != expected or any(
-        not isinstance(results[name], dict) or results[name].get("result") != "success"
-        for name in MANDATORY
+def require_results(results: dict) -> None:
+    if set(results) != MANDATORY or any(
+        not isinstance(result, dict) or result.get("result") != "success"
+        for result in results.values()
     ):
         raise ValueError(f"Every mandatory job must succeed: {results}")
-    if "odoo19" in expected and (
-        not isinstance(results["odoo19"], dict)
-        or results["odoo19"].get("result") != ("success" if requested19 else "skipped")
-    ):
-        raise ValueError(f"Requested compatibility result must match selection: {results}")
 
 
 def require_junit(path: Path) -> int:
@@ -129,23 +123,18 @@ def verify(directory: Path, *, complete: bool = False, release_ref: str | None =
         check_file(directory, image["archive"])
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", image["id"]):
             raise ValueError("Missing tested image identity")
-        if manifest.get("odoo18") != {"requested_major": 18, "observed_major": 18}:
-            raise ValueError("Successful Odoo18 proof is required first")
-        for name in ("integration", "image"):
-            record = manifest["proofs"][name]
-            if require_junit(check_file(directory, record)) != record["tests"]:
-                raise ValueError("Candidate test count mismatch")
-        facts = [
-            json.loads(line)
-            for line in check_file(directory, manifest["odoo_facts"]).read_text().splitlines()
-        ]
-        if len(facts) != 2 or any(
-            row.get("requested_major") != 18
-            or row.get("observed_major") != 18
-            or row.get("modules") != ["base", "mail"]
-            for row in facts
-        ):
-            raise ValueError("Missing observed18 facts for both required harnesses")
+        majors = manifest["odoo_majors"]
+        if 18 not in majors or any(type(major) is not int or major < 18 for major in majors):
+            raise ValueError("Missing supported Odoo qualification majors")
+        for major in majors:
+            qualification = json.loads((directory / f"odoo-{major}.json").read_text())
+            if qualification["image_id"] != image["id"]:
+                raise ValueError("Qualification used another candidate image")
+            for name in ("integration", "image"):
+                record = qualification["proofs"][name]
+                if require_junit(check_file(directory, record)) != record["tests"]:
+                    raise ValueError("Candidate test count mismatch")
+            validate_facts(check_file(directory, qualification["facts"]), major)
     if release_ref is not None:
         require_release_ref(release_ref, manifest["source"]["sha"], manifest["version"])
         if manifest["source"]["dirty"] or manifest["source_ref"] != release_ref:
@@ -195,26 +184,136 @@ def loaded_image_ref(directory: Path, manifest: dict) -> str:
     return image["tag"]
 
 
+def validate_facts(path: Path, major: int) -> list:
+    facts = [json.loads(line) for line in path.read_text().splitlines()]
+    if len(facts) != 2 or any(
+        row.get("requested_major") != major
+        or row.get("observed_major") != major
+        or row.get("modules") != ["base", "mail"]
+        for row in facts
+    ):
+        raise ValueError(f"Missing observed Odoo{major} facts for both harnesses")
+    return facts
+
+
+def record_package(directory: Path, source_ref: str) -> None:
+    identity = json.loads((directory / "source.json").read_text())
+    if source_identity() != identity:
+        raise ValueError("Source changed while building/testing candidate")
+    wheels = list(directory.glob("*.whl"))
+    if len(wheels) != 1:
+        raise ValueError("Expected exactly one candidate wheel")
+    write_manifest(
+        directory,
+        {
+            "schema": 1,
+            "source": identity,
+            "source_ref": source_ref,
+            "version": version(),
+            "lock_sha256": sha256(ROOT / "uv.lock"),
+            "wheel": file_record(wheels[0]),
+            "requirements": file_record(directory / "requirements.txt"),
+            "tools": {
+                "uv": run("uv", "--version"),
+                "python": run("uv", "run", "--frozen", "python", "--version"),
+            },
+        },
+    )
+    verify(directory)
+
+
+def record_image(directory: Path, tag: str, majors: list[int]) -> None:
+    manifest = verify(directory)
+    if not majors or any(major < 18 for major in majors):
+        raise ValueError("Select Odoo majors >=18")
+    manifest.update(
+        {
+            "image": {
+                "id": run("docker", "image", "inspect", "--format", "{{.Id}}", tag),
+                "tag": tag,
+                "archive": file_record(directory / "image.tar"),
+            },
+            "odoo_majors": majors,
+        }
+    )
+    write_manifest(directory, manifest)
+
+
+def record_qualification(directory: Path, major: int) -> None:
+    manifest = verify(directory)
+    facts = directory / f"odoo-{major}-facts.jsonl"
+    for row in validate_facts(facts, major):
+        for resource, identity in [
+            *(("container", item["id"]) for item in row["containers"]),
+            ("network", row["network_id"]),
+        ]:
+            if (
+                subprocess.run(
+                    ["docker", resource, "inspect", identity], capture_output=True
+                ).returncode
+                == 0
+            ):
+                raise ValueError(f"Owned {resource} remains after teardown: {identity}")
+    proofs = {}
+    for name in ("integration", "image"):
+        report = directory / f"odoo-{major}-{name}.xml"
+        proofs[name] = {**file_record(report), "tests": require_junit(report)}
+    (directory / f"odoo-{major}.json").write_text(
+        json.dumps(
+            {
+                "image_id": manifest["image"]["id"],
+                "proofs": proofs,
+                "facts": file_record(facts),
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("required")
+    sub.add_parser("source")
+    sub.add_parser("version")
+    junit = sub.add_parser("junit")
+    junit.add_argument("path", type=Path)
     release = sub.add_parser("release-ref")
     release.add_argument("--ref", required=True)
-    check = sub.add_parser("verify")
-    check.add_argument("--candidate-dir", required=True, type=Path)
-    check.add_argument("--release-ref")
-    check.add_argument("--loaded-image", action="store_true")
+    for command in ("verify", "record-package", "record-image", "record-qualification"):
+        check = sub.add_parser(command)
+        check.add_argument("--candidate-dir", required=True, type=Path)
+        if command == "verify":
+            check.add_argument("--release-ref")
+            check.add_argument("--loaded-image", action="store_true")
+            check.add_argument("--complete", action="store_true")
+        elif command == "record-package":
+            check.add_argument("--source-ref", required=True)
+        elif command == "record-image":
+            check.add_argument("--tag", required=True)
+            check.add_argument("--majors", required=True, nargs="+", type=int)
+        else:
+            check.add_argument("--major", required=True, type=int)
     args = parser.parse_args()
     if args.command == "required":
-        requested = os.environ.get("REQUESTED19", "false")
-        if requested not in {"true", "false"}:
-            raise ValueError("REQUESTED19 must be true or false")
-        require_results(json.loads(os.environ["RESULTS"]), requested == "true")
+        require_results(json.loads(os.environ["RESULTS"]))
+    elif args.command == "source":
+        print(json.dumps(source_identity()))
+    elif args.command == "version":
+        print(version())
+    elif args.command == "junit":
+        print(require_junit(args.path))
     elif args.command == "release-ref":
         require_release_ref(args.ref, run("git", "rev-parse", "HEAD"), version())
+    elif args.command == "record-package":
+        record_package(args.candidate_dir, args.source_ref)
+    elif args.command == "record-image":
+        record_image(args.candidate_dir, args.tag, args.majors)
+    elif args.command == "record-qualification":
+        record_qualification(args.candidate_dir, args.major)
     else:
-        manifest = verify(args.candidate_dir, complete=True, release_ref=args.release_ref)
+        manifest = verify(args.candidate_dir, complete=args.complete, release_ref=args.release_ref)
         if args.loaded_image:
             loaded_image_ref(args.candidate_dir, manifest)
         print(json.dumps(manifest, indent=2))

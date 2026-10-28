@@ -1,6 +1,6 @@
 ---
 name: mcp-verification
-description: Verify godoo-mcp-server over real Streamable HTTP, installed wheels and exact candidate images against disposable Odoo18, or maintain those proof paths. Covers caller permissions, credential isolation and interrupted writes; excludes hosted gateway acceptance.
+description: Verify godoo-mcp-server over real Streamable HTTP, installed wheels and exact candidate images against selected disposable Odoo versions, or maintain those proof paths. Covers caller permissions, credential isolation and interrupted writes; excludes hosted gateway acceptance.
 ---
 
 # Verify godoo-mcp-server
@@ -16,12 +16,13 @@ Read current resource authority before starting Docker. Use Python3.14.8, uv0.12
 and committed `uv.lock`; checks call `uv sync --frozen --all-groups`. No model login
 or real Odoo credential is needed. Keep evidence and candidates outside the checkout
 using owner-paths/current task guidance. Use a new directory for each candidate.
-All native scripts resolve their project from their own path, so an absolute
-invocation works from another CWD.
+Use `just --justfile /absolute/path/to/justfile` from another CWD.
+`just r2` needs Node24+ and OpenSSL and uses a disposable Miniflare R2 bucket.
 
 Record source SHA, tracked patch and untracked input identity, lock/tool versions,
 command exits and test selection. `candidate.json` records these plus wheel hash,
-metadata version, tested image ID/archive hash and Odoo proof hashes. A local dirty
+metadata version and tested image ID/archive hash. Per-major `odoo-<major>.json`
+records Odoo proof hashes. A local dirty
 candidate is reproducible only with its retained patch and untracked files. Later
 source changes invalidate it; rerun package and Odoo checks for the new candidate.
 
@@ -30,9 +31,12 @@ source changes invalidate it; rerun package and Odoo checks for the new candidat
 From the checkout root, substitute your external paths:
 
 ```sh
-scripts/check.py offline --evidence-dir "$evidence/offline"
-scripts/check.py package --candidate-dir "$evidence/candidate"
-ODOO_VERSION=18.0 scripts/check.py odoo18 --candidate-dir "$evidence/candidate"
+just offline "$evidence/offline"
+just package "$evidence/candidate"
+just image "$evidence/candidate"
+just odoo "$evidence/candidate" 18
+just odoo "$evidence/candidate" 19
+just archive "$evidence/candidate"
 ```
 
 - `offline`: full Ruff lint/format, strict source mypy, default pytest, and a real
@@ -41,11 +45,17 @@ ODOO_VERSION=18.0 scripts/check.py odoo18 --candidate-dir "$evidence/candidate"
   into an isolated consumer outside source, check import origin/metadata/CLI,
   bundled topics/provenance/license and absence of editable dependencies. Drive
   real HTTP with the installed interpreter, then discard only that consumer.
-- `odoo18`: require the preceding candidate's unchanged source/lock/wheel; fail
-  missing Docker. Build one unique image from that wheel, verify actual Odoo18,
-  run the full vertical suite and the exact prebuilt image's HTTP tool test.
-  Reject zero tests, skips, failures and wrong majors. Export that tested image
-  to `image.tar`, record hashes and remove only the invocation's unique image tag.
+- `image`: verify unchanged source/lock/wheel, build one unique image and export
+  `image.tar` with its identity. Remove only the invocation's unique image tag.
+- `odoo <directory> <major>`: load the exact archived image, verify actual Odoo
+  major, run the full vertical suite and the prebuilt image's HTTP tool test.
+  Reject zero tests, skips, failures and wrong majors. Keep separate hashed facts
+  and JUnit reports for each selected major.
+- `archive`: verify all configured major proofs and transferred wheel/image bytes,
+  then load the archive and verify its actual daemon identity.
+- `r2`: run the record-delivery contracts against Miniflare R2 over a test-only S3
+  adapter, including actual uploads/downloads, SigV4 checks and paginated cleanup.
+  Live provider permissions and expiry remain separate rollout acceptance.
 
 The offline/installed HTTP driver is `scripts/http_probe.py`; its public requests
 and observations are described in [the HTTP recipe](references/http-smoke.md).
@@ -59,11 +69,11 @@ commands remain available; they do not replace the required check family.
 
 ## Real Odoo, permissions and interrupted writes
 
-Only use owned disposable Docker resources. `tests/odoo_proof.py` selects18
+Only use owned disposable Docker resources. `tests/odoo_proof.py` selects the requested major
 explicitly and queries `common.version`; never trust an image tag as an observation.
 Both required harnesses install `base,mail` without shared snapshots and record
 actual Odoo/Postgres container IDs, image IDs/digests and network IDs in
-`odoo-facts.jsonl`. Distinct containers isolate each `test_odoo` database.
+`odoo-<major>-facts.jsonl`. Distinct containers isolate each `test_odoo` database.
 The required check clears ambient Odoo/seed credentials and runs suites serially.
 An explicit17 is rejected before provisioning.
 
@@ -80,18 +90,19 @@ cannot emit a finished event.
 The image fixture requires `MCP_CANDIDATE_IMAGE` (an exact prebuilt image) and
 `MCP_EXPECTED_VERSION`. The native caller supplies both. It never builds/deletes
 a caller's image; it checks the running image ID, non-root UID, installed version,
-health and a nonempty real `record_search` result against observed18.
+health and a nonempty real `record_search` result against the observed selected major.
 
 After surprising failures, inspect retained MCP/relay logs and recheck the owned
 instance's health/Odoo readiness before classifying environment, harness or product
 failure. Preserve failed evidence. Do not weaken expected behavior to pass.
 
-## CI, promotion and optional coverage
+## CI and promotion
 
 `.github/workflows/ci.yml` is both authoritative PR/push validation on develop/main
 (no path filter) and the release workflow's same-run reusable validator. Job
-`required` runs always and requires `offline,package,odoo18,archive`, each success.
-It waits for19: requested19 must succeed and unrequested19 must be skipped.
+`required` runs always and requires `offline,r2,package,image,odoo,archive`, each
+success. The Odoo matrix reads `odoo_majors` from `justfile` (currently18 and19);
+every entry tests the same image, with separate version-specific proofs.
 `tested-candidate` contains the tested wheel, image archive and manifest. The
 manual publish workflow resolves a version-matching tag reachable from main,
 validates that exact SHA, checks candidate identities before credentials and again
@@ -99,12 +110,6 @@ before promotion, and loads/pushes the tested image rather than rebuilding it.
 `publish` defaults false. Both PyPI and TestPyPI are external publication.
 Hosted runs, branch protections, environment protections and registry acceptance
 require separate readback; source configuration/local predicates do not prove them.
-
-Optional19 is explicit: manual `qualify19=true` depends on successful offline/package/18
-and consumes the same wheel/image/archive/lock. Locally `scripts/check.py odoo19`
-rejects candidates without successful18; it needs separate resource authority.
-It is outside the ordinary18 gate, fails honestly when requested, and remains
-unqualified until actually executed. Never start19 in parallel with18.
 
 Billable Claude remains a separate explicitly authorized trial:
 

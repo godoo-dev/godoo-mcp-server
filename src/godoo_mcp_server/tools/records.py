@@ -5,19 +5,23 @@ Provides: record_search, record_read, record_create, record_update, record_delet
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastmcp import Context  # noqa: TC002
 from fastmcp.server.dependencies import get_http_request
 from godoo.client.client import OdooClient, OdooClientConfig
 from godoo.client.errors import OdooError
+from pydantic import Field
 
+from godoo_mcp_server.artifacts import deliver_record_result
 from godoo_mcp_server.links import record_web_urls
 from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
 from godoo_mcp_server.server import mcp
 
 if TYPE_CHECKING:
     from godoo_mcp_server.credentials import OdooCredentials
+
+ReturnByteLimit = Annotated[int, Field(ge=0, strict=True)]
 
 
 def _make_config(creds: OdooCredentials) -> OdooClientConfig:
@@ -31,12 +35,16 @@ def _make_config(creds: OdooCredentials) -> OdooClientConfig:
 
 @mcp.tool(
     name="record_search",
-    annotations={"readOnlyHint": True},
+    annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
     description=(
         "Search records of any Odoo model using a domain filter. Returns matching records"
         " with the requested fields in a single call. domain uses raw Odoo domain syntax:"
         " list of triples, e.g. [['active','=',True]]. Pagination: pass limit + offset."
         " Default limit=80. Use a bounded positive integer limit."
+        " max_return_bytes defaults to 500 UTF-8 JSON bytes: larger results return only a"
+        " private JSON artifact receipt with a signed URL (default 60 minutes)."
+        " Set 0 to force artifact delivery, null to return the full result inline."
+        " Odoo is only read; artifact delivery creates a temporary stored copy."
     ),
 )
 async def record_search(
@@ -47,6 +55,7 @@ async def record_search(
     limit: int = 80,
     offset: int = 0,
     order: str | None = None,
+    max_return_bytes: ReturnByteLimit | None = 500,
 ) -> dict[str, object]:
     """Search records using search_read (one-shot: search + read in a single RPC call)."""
     request = get_http_request()
@@ -61,7 +70,7 @@ async def record_search(
                 offset=offset,
                 order=order,
             )
-            return {
+            result: dict[str, object] = {
                 "records": records,
                 "count": len(records),
                 "web_urls": record_web_urls(
@@ -70,18 +79,32 @@ async def record_search(
             }
     except OdooError as e:
         raise safe_tool_error(e) from None
+    return await deliver_record_result(
+        result,
+        max_return_bytes=max_return_bytes,
+        model=model,
+        tool="record_search",
+        row_count=len(records),
+    )
 
 
 @mcp.tool(
     name="record_read",
-    annotations={"readOnlyHint": True},
-    description="Read fields of specific records by id list.",
+    annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+    description=(
+        "Read fields of specific records by id list. max_return_bytes defaults to 500"
+        " UTF-8 JSON bytes: larger results return only a private JSON artifact receipt"
+        " with a signed URL (default 60 minutes). Set 0 to force artifact delivery,"
+        " null to return the full result inline. Odoo is only read; artifact delivery"
+        " creates a temporary stored copy."
+    ),
 )
 async def record_read(
     ctx: Context,
     model: str,
     ids: list[int],
     fields: list[str] | None = None,
+    max_return_bytes: ReturnByteLimit | None = 500,
 ) -> dict[str, object]:
     """Read specific records by their ids."""
     request = get_http_request()
@@ -89,7 +112,7 @@ async def record_read(
     try:
         async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             records = await client.read(model, ids, fields)
-            return {
+            result: dict[str, object] = {
                 "records": records,
                 "web_urls": record_web_urls(
                     creds.url, model, [r["id"] for r in records if "id" in r]
@@ -97,6 +120,13 @@ async def record_read(
             }
     except OdooError as e:
         raise safe_tool_error(e) from None
+    return await deliver_record_result(
+        result,
+        max_return_bytes=max_return_bytes,
+        model=model,
+        tool="record_read",
+        row_count=len(records),
+    )
 
 
 @mcp.tool(

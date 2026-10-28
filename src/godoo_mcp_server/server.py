@@ -22,6 +22,7 @@ from starlette.middleware import Middleware as StarletteMiddleware
 from starlette.responses import JSONResponse
 
 from godoo_mcp_server import __version__
+from godoo_mcp_server.artifacts import export_lifespan
 from godoo_mcp_server.credentials import CredentialMiddleware
 from godoo_mcp_server.odoo_runtime import ClassifiedToolError
 
@@ -93,6 +94,7 @@ if TYPE_CHECKING:
 
 mcp = FastMCP(
     "godoo-mcp-server",
+    lifespan=export_lifespan,
     instructions=(
         "Stateless MCP server for Odoo. Read guidance_get (or skill://odoo/SKILL.md) "
         "for Odoo workflows. Use users_whoami to confirm identity and target URL. "

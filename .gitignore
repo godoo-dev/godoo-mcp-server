@@ -11,3 +11,4 @@ htmlcov/
 .venv/
 .odoo-testcontainers/
 dist/
+node_modules/

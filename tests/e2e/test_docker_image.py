@@ -262,6 +262,7 @@ def test_docker_image_record_search(
                 "model": "res.partner",
                 "domain": [],
                 "limit": 1,
+                "max_return_bytes": None,
             },
             "_meta": {
                 "io.modelcontextprotocol/protocolVersion": "2026-07-28",

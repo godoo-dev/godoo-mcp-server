@@ -64,8 +64,8 @@ async def _assert_user_isolation(clients: Any, credentials: tuple[str, str], **k
         assert _value(identities[0])["uid"] != _value(identities[1])["uid"]
         assert _value(identities[1])["username"] == credentials[0]
         allowed, denied = await asyncio.gather(
-            _call(admin, "record_search", model="res.users"),
-            _call(portal, "record_search", model="res.users"),
+            _call(admin, "record_search", model="res.users", max_return_bytes=None),
+            _call(portal, "record_search", model="res.users", max_return_bytes=None),
         )
         assert allowed.get("isError") is not True
         assert denied.get("isError") is True
@@ -104,11 +104,19 @@ async def test_record_crud(odoo_mcp: httpx.AsyncClient) -> None:
     url = f"{odoo_mcp.headers['x-odoo-url'].rstrip('/')}/web#model={model}&id={record_id}"
     assert created["web_url"] == url
     found = _value(
-        await _call(odoo_mcp, "record_search", model=model, domain=[["id", "=", record_id]])
+        await _call(
+            odoo_mcp,
+            "record_search",
+            model=model,
+            domain=[["id", "=", record_id]],
+            max_return_bytes=None,
+        )
     )
     assert [row["id"] for row in found["records"]] == [record_id]
     assert found["web_urls"] == {str(record_id): url}
-    read = _value(await _call(odoo_mcp, "record_read", model=model, ids=[record_id]))
+    read = _value(
+        await _call(odoo_mcp, "record_read", model=model, ids=[record_id], max_return_bytes=None)
+    )
     assert read["records"][0]["name"] == "CRUD"
     assert read["web_urls"] == {str(record_id): url}
     updated = _value(
@@ -118,11 +126,19 @@ async def test_record_crud(odoo_mcp: httpx.AsyncClient) -> None:
     )
     assert updated["success"] is True
     assert updated["web_urls"] == {str(record_id): url}
-    read = _value(await _call(odoo_mcp, "record_read", model=model, ids=[record_id]))
+    read = _value(
+        await _call(odoo_mcp, "record_read", model=model, ids=[record_id], max_return_bytes=None)
+    )
     assert read["records"][0]["name"] == "Updated"
     assert _value(await _call(odoo_mcp, "record_delete", model=model, ids=[record_id]))["success"]
     remaining = _value(
-        await _call(odoo_mcp, "record_search", model=model, domain=[["id", "=", record_id]])
+        await _call(
+            odoo_mcp,
+            "record_search",
+            model=model,
+            domain=[["id", "=", record_id]],
+            max_return_bytes=None,
+        )
     )
     assert remaining["records"] == []
 
@@ -152,7 +168,7 @@ async def test_mail(odoo_mcp: httpx.AsyncClient) -> None:
 async def test_activity_schedule_result_and_completion(
     odoo_mcp: httpx.AsyncClient, odoo_harness: Any
 ) -> None:
-    """A real Odoo18 schedule creates exactly one activity and returns its ID."""
+    """A real schedule creates exactly one activity and returns its ID."""
     partner_id = _value(
         await _call(
             odoo_mcp,
