@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import obstore
 from obstore.exceptions import NotFoundError
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("godoo_mcp_server.artifacts")
 CLEANUP_INTERVAL_SECONDS = 60
-_MANAGED_KEY = re.compile(r"exports/v1/([1-9][0-9]*)/[0-9a-f]{32}\.json")
+_MANAGED_KEY = re.compile(r"exports/v1/([1-9][0-9]*)/[0-9a-f]{32}\.(?:json|bin)")
 MAX_ARTIFACT_BYTES = 100 * 1024 * 1024
 _RESULT_ADAPTER = TypeAdapter(dict[str, object])
 
@@ -93,10 +93,18 @@ class ArtifactStorage:
         except Exception:
             raise export_error("Private export storage is not configured correctly") from None
 
-    async def publish(self, file: Path, artifact_id: str) -> tuple[str, str, str]:
+    async def publish(
+        self,
+        file: Path,
+        artifact_id: str,
+        *,
+        mimetype: str = "application/json",
+        filename: str | None = None,
+    ) -> tuple[str, str, str]:
         # Duration in the key makes cleanup independent of process memory and
         # later config changes. Only this versioned namespace is swept.
-        key = f"exports/v1/{self.retention_seconds}/{artifact_id}.json"
+        suffix = "json" if filename is None else "bin"
+        key = f"exports/v1/{self.retention_seconds}/{artifact_id}.{suffix}"
         try:
             # Sign before uploading: retention measured from last_modified is
             # then at least the signed lifetime plus grace, including slow uploads.
@@ -104,11 +112,16 @@ class ArtifactStorage:
             url = await obstore.sign_async(self.store, "GET", key, self.download_lifetime)
             if not _https_url(url):
                 raise ValueError
+            attributes = {"Content-Type": mimetype, "Cache-Control": "no-store"}
+            if filename is not None:
+                attributes["Content-Disposition"] = (
+                    f"attachment; filename*=UTF-8''{quote(filename, safe='')}"
+                )
             await obstore.put_async(
                 self.store,
                 key,
                 file,
-                attributes={"Content-Type": "application/json", "Cache-Control": "no-store"},
+                attributes=attributes,
             )
             metadata = await obstore.head_async(self.store, key)
             if datetime.now(UTC) >= expires_at:
@@ -168,33 +181,52 @@ async def deliver_record_result(
     content = _RESULT_ADAPTER.dump_json(result)
     if len(content) <= max_return_bytes:
         return result
-    if len(content) > MAX_ARTIFACT_BYTES:
-        raise export_error("Record result exceeds the 100 MiB artifact size limit")
-    storage = ArtifactStorage.from_env()
-    artifact_id = uuid.uuid4().hex
-    with tempfile.TemporaryDirectory(prefix="godoo-result-") as directory:
-        file = Path(directory) / "result.json"
-        file.write_bytes(content)
-        url, expires_at, delete_after = await storage.publish(file, artifact_id)
+    receipt = await deliver_artifact(content, source={"tool": tool, "model": model})
     properties = {name: {"type": "array" if name == "records" else "object"} for name in result}
     if "count" in properties:
         properties["count"] = {"type": "integer"}
+    return {
+        **receipt,
+        "format": "json",
+        "encoding": "utf-8",
+        "schema": {"type": "object", "properties": properties},
+        "row_count": row_count,
+    }
+
+
+async def deliver_artifact(
+    content: bytes,
+    *,
+    source: dict[str, object],
+    mimetype: str = "application/json",
+    filename: str | None = None,
+) -> dict[str, object]:
+    """Publish bytes once and return only metadata and a private download capability."""
+    if len(content) > MAX_ARTIFACT_BYTES:
+        raise export_error("Content exceeds the 100 MiB artifact size limit")
+    storage = ArtifactStorage.from_env()
+    artifact_id = uuid.uuid4().hex
+    try:
+        with tempfile.TemporaryDirectory(prefix="godoo-result-") as directory:
+            file = Path(directory) / "content"
+            file.write_bytes(content)
+            url, expires_at, delete_after = await storage.publish(
+                file, artifact_id, mimetype=mimetype, filename=filename
+            )
+    except Exception:
+        raise export_error("Private export delivery failed") from None
     return {
         "delivery": "artifact",
         "artifact_id": artifact_id,
         "download_url": url,
         "expires_at": expires_at,
         "expires_in_seconds": storage.url_ttl_minutes * 60,
-        "format": "json",
-        "encoding": "utf-8",
-        "schema": {"type": "object", "properties": properties},
-        "row_count": row_count,
         "size_bytes": len(content),
         "sha256": hashlib.sha256(content).hexdigest(),
         "retention_seconds": storage.retention_seconds,
         "cleanup_grace_seconds": storage.cleanup_grace_minutes * 60,
         "delete_after": delete_after,
-        "source": {"tool": tool, "model": model},
+        "source": source,
     }
 
 

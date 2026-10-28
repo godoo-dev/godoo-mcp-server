@@ -29,7 +29,7 @@ An unknown tool path raises `ToolError`.
 | `action_execute_action` | `action_id` | `result` |
 | `attachments_list` | `domain=None`, `limit=80`, `res_model=None`, `res_id=None` | `attachments`, `count` |
 | `attachments_upload` | `name`, `content_base64`, `res_model`, `res_id`, `mimetype=None` | `id` |
-| `attachments_download` | `attachment_id` | `id`, `name`, `mimetype`, `content_base64`, `size_bytes`; or `error` |
+| `attachments_download` | `attachment_id` | private binary artifact receipt with `id`, `name`, `mimetype`, `size_bytes`, `sha256`, `download_url` and expiry/cleanup metadata; or `error` |
 | `discovery_list_models` | none | `models` |
 | `discovery_get_fields` | `model`, `attributes=None` | `model`, `fields` |
 | `discovery_list_menus` | `domain=None`, `limit=80` | `menus`, `count` |
@@ -60,6 +60,14 @@ are mapped to safe public errors. A write that may have dispatched can return
 "Odoo write outcome is unknown; do not retry automatically". Inspect actual
 Odoo state before deciding to retry. `attachments_download` returns
 `{"error":"attachment_has_no_content","id":...}` when binary data is absent.
+For nonempty attachments it always returns a private artifact receipt in both text
+and `structuredContent`, with the same URL and retention fields as record artifacts.
+There is no inline opt-out: bytes, base64, previews and automatically dereferenced
+resources are excluded. The signed GET returns the original binary with its MIME
+type and an attachment download disposition carrying the filename. The shared
+100 MiB cap, sanitized storage failures and 60 + 30 minute defaults apply. Odoo
+permissions still govern both binary and metadata reads; no stored copy is created
+on access denial. Its annotations account for the temporary storage write.
 
 For read-only exploration, confirm `users_whoami`, inspect fields for the chosen
 model, then search with an explicit domain, field list and bound. Example MCP
