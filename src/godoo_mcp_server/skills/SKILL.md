@@ -32,9 +32,13 @@ and permitted records from this caller's instance to parameterize the chosen top
 or an ACL denial does not prove a feature is uninstalled. If a required capability
 is unknown, state that and make the smallest useful authorized read.
 
-Search returns records already: `record_search` provides `records`, page `count`
-and `web_urls`; request explicit fields and bounded limits. Read again when missing
-fields or changed data require it. The `odoo://model/...` resource may be cold;
+`record_search` returns the selected page; request explicit fields and bounded
+limits. Search/read results above `max_return_bytes` (default 500 UTF-8 JSON bytes)
+return an artifact receipt with a signed URL. Download it directly in calculation
+code to obtain the same `records`, search page `count` and `web_urls` object without
+putting the dataset in model context. `0` forces artifact delivery; `null` explicitly
+allows unlimited inline output. Read again when missing fields or changed data
+require it. The `odoo://model/...` resource may be cold;
 `discovery_get_fields` returns current fields directly and does not warm that cache.
 
 ## Tool boundaries
@@ -55,7 +59,8 @@ considering a retry. Keep mutation and notification scope within the user's requ
 
 ## Navigation
 
-Record search/read results return `web_urls` keyed by ID, successful updates return
+Record search/read result objects (inline or downloaded) contain `web_urls` keyed by ID;
+successful updates return
 `web_urls`, and creates return `web_url`; deletes have no link. Odoo field values
 are unchanged. Links use the configured base URL and `/web#model=…&id=…` convention.
 Browser access and a model's form availability are separate; no portal token is minted.

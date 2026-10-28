@@ -1,14 +1,20 @@
 # Develop the operational MCP server
 
-Use Python 3.14+, `uv` and the committed `uv.lock`. From the checkout root:
+Use Python 3.14+, `uv`, `just` and the committed `uv.lock`. From the checkout root:
 
 ```sh
-uv sync --frozen --all-groups
-uv run --frozen ruff check .
-uv run --frozen ruff format --check .
-uv run --frozen mypy --strict src/
-uv run --frozen pytest --tb=short
+just lint
+just test
+just r2  # Also needs Node24+ and OpenSSL; installs locked test-only npm dependencies.
 ```
+
+Run `just` to list recipes. `just r2` reruns the compact record-delivery contract
+suite against a disposable Miniflare R2 bucket, including uploads, signed downloads,
+unsigned/tampered URL rejection, pagination and timed cleanup. A small test-only
+S3 adapter bridges obstore to Miniflare's R2 binding and verifies SigV4 signatures;
+Miniflare has no native S3 listener. This checks local R2 semantics and the server's
+storage path. Live Cloudflare signing, permissions and expiry still need rollout
+acceptance. Ordinary `just test` uses obstore's memory backend and needs no Node.
 
 Default pytest excludes both `integration` and `e2e`. Unit/transport checks use
 doubles and do not establish real Odoo effects or client acceptance. For
@@ -27,19 +33,22 @@ work belong to this project; see [ownership](ownership.md).
 Use an external evidence directory and a new candidate directory:
 
 ```sh
-scripts/check.py offline --evidence-dir "$evidence/offline"
-scripts/check.py package --candidate-dir "$evidence/candidate"
-ODOO_VERSION=18.0 scripts/check.py odoo18 --candidate-dir "$evidence/candidate"
+just offline "$evidence/offline"
+just package "$evidence/candidate"
+just image "$evidence/candidate"
+just odoo "$evidence/candidate" 18
+just odoo "$evidence/candidate" 19
+just archive "$evidence/candidate"
 ```
 
 The package command builds one wheel, installs frozen runtime dependencies and
 that exact wheel in an isolated consumer, verifies origin/version/CLI/resources,
-and drives real HTTP. The Odoo command checks the unchanged candidate identity,
-builds one unique image from that wheel, exercises real Odoo18 identities/ACLs and
+and drives real HTTP. The image command builds one unique image from that wheel.
+Each Odoo command checks the unchanged candidate identity and exercises real Odoo identities/ACLs and
 interrupted writes, then the exact image's real HTTP tool result. It records
 observed majors, container/image IDs, wheel/archive hashes and suite reports.
 Empty/skipped required suites, unavailable Docker and wrong majors fail.
-No Claude login is needed. Native scripts work by absolute path from another CWD.
+No Claude login is needed. From another CWD, use `just --justfile /path/to/justfile`.
 
 Use [mcp-verification](../.agents/skills/mcp-verification/SKILL.md) for boundary
 selection, focused HTTP diagnosis, evidence and cleanup. Default pytest is
@@ -48,9 +57,10 @@ Docker-free. Docker suites need disposable resource authority; the separate
 excluded from required checks. Lost write replies need independent readback
 before retry. Stop only trial-owned resources; retain failed evidence.
 
-Optional Odoo19 is available through manual CI `qualify19=true`, or the native
-`odoo19` mode after successful18 for the same candidate. It consumes the same
-wheel/image/lock, never runs in parallel with18, and is unqualified until executed.
+CI runs a version matrix over `odoo_majors` in `justfile` (currently `18 19`).
+Each entry loads the same wheel/image/archive and keeps separate reports. Add a
+major to that list when extending compatibility; no new job or command branch
+is needed. A failed matrix entry fails the required aggregate.
 
 ## Source map
 
@@ -64,6 +74,7 @@ Under `src/godoo_mcp_server/`:
 | `tools/` | Odoo calls and result envelopes |
 | `resources.py`, `catalog.py` | Bundled guidance and target/user-scoped model catalog |
 | `links.py` | Odoo browser links added to record results |
+| `artifacts.py` | Byte-limited record delivery, private R2/S3/GCS JSON artifacts and timed cleanup |
 | `skills/` | Packaged consumer Markdown, provenance and CC0 notice |
 | `__main__.py` | CLI version and uvicorn startup |
 
@@ -83,13 +94,16 @@ manifest, provenance and CC0 notice; repository maintenance skills are not serve
 
 The Dockerfile installs the candidate wheel into locked runtime dependencies and
 copies only the virtual environment into a pinned, non-root Python3.14 runtime.
-`check.py odoo18` prepares its minimal build context (metadata, lock and wheel),
-builds once, tests that ID and exports the same image bytes for later promotion.
+`just image` prepares its minimal build context (metadata, lock and wheel),
+builds once and exports the same image bytes tested by every matrix entry for
+later promotion. `scripts/candidate.py` retains substantive identity, archive and
+proof validation; `scripts/http_probe.py` and `installed_probe.py` drive real
+protocol/package checks. Command orchestration lives in `justfile`.
 
 The [CI workflow](../.github/workflows/ci.yml) runs on all develop/main PRs and
 pushes, plus manual/reusable invocations. Its stable `required` aggregate rejects
-anything except success from exactly `offline`, `package`, `odoo18` and `archive`. All
-installs/checks are frozen. Candidate reports keep source, patch/untracked
+anything except success from exactly `offline`, `r2`, `package`, `image`, `odoo` and `archive`.
+All installs/checks are frozen. Candidate reports keep source, patch/untracked
 identity, version, lock/tool identities and hashes. Local dirty checks are valid
 only for those exact input bytes; publication requires a clean tagged commit.
 

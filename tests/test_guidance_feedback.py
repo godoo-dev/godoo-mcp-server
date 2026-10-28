@@ -104,6 +104,8 @@ async def test_tool_annotations_preserve_mutation_classification(mcp_client):
         "mail_schedule_activity",
         "mail_mark_activity_done",
         "attachments_upload",
+        "record_search",
+        "record_read",
         "action_execute_action",
     }
     for name, tool in tools.items():

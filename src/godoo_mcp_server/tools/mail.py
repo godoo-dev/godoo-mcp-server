@@ -191,9 +191,16 @@ async def mail_schedule_activity(
             if user_id is not None:
                 kwargs["user_id"] = user_id
             result = await client.call(model, "activity_schedule", [res_id], kwargs)
-            # Odoo 18 RPC serializes the returned recordset as its representation.
+            # Odoo18 serializes a recordset as text; Odoo19 returns its IDs.
             # Accept only the single activity returned for this single record;
             # an unrecognized result remains an unknown write, never a retry.
+            if (
+                isinstance(result, list)
+                and len(result) == 1
+                and type(result[0]) is int
+                and result[0] > 0
+            ):
+                result = result[0]
             if isinstance(result, str):
                 recordset = re.fullmatch(r"mail\.activity\(([1-9][0-9]*),?\)", result)
                 if recordset is not None:

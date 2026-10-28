@@ -9,9 +9,33 @@ For a small exact lookup, for example:
 {"model":"res.partner","domain":[["name","=","Example Company"]],"fields":["id","name"],"limit":10,"order":"id asc"}
 ```
 
+## Result delivery
+
+Both `record_search` and `record_read` default to `max_return_bytes=500`. Results
+at or below that many compact UTF-8 JSON bytes appear inline. Larger results
+return only a receipt with `delivery="artifact"`, a signed `download_url`, expiry,
+row count, byte size and SHA-256. The JSON file contains the same result object:
+`records`, `web_urls` and, for searches, the page's `count`. Query arguments and
+Odoo access rules are unchanged; delivery does not fetch extra rows.
+
+For bulk calculations, keep the default or use `max_return_bytes=0` to force a
+download even for a small page. Pass the receipt directly to calculation code,
+stream the URL into a workspace file, verify size/checksum, and parse the JSON
+there. Return only the requested summaries or explicitly bounded records. Do not
+print the receipt, URL or dataset, or fetch it through a tool that returns its
+body to model context. Signed URLs are reusable bearer capabilities until expiry
+(default 60 minutes); cleanup follows the configured grace (default 30 minutes).
+
+For an intentionally inline lookup, use a higher positive `max_return_bytes` or
+`null` to disable the byte limit. Lowering it sends more responses through artifact
+delivery. If storage fails, the tool returns a safe error instead of spilling the
+rows inline. Successful inline calls need no object storage. Search/read perform
+no Odoo business writes, but may create temporary copies in private object storage.
+
 Do not assume a name is unique. Resolve ambiguity before a mutation. For pagination,
 keep the same domain/fields and deterministic order such as `id asc`, then advance
-`offset` by the page length. Finish on an empty/short page or the task's chosen bound;
+`offset` by the page length from the inline or downloaded result. Finish on an
+empty/short page or the task's chosen bound;
 report truncation when stopping early. Offset pagination is not a snapshot: concurrent
 changes can move rows between pages. No exact-count/aggregate tool is exposed.
 

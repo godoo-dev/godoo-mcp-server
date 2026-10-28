@@ -12,18 +12,11 @@ import httpx
 
 def requested_major() -> int:
     major = int(os.environ.get("MCP_TEST_ODOO_MAJOR", "18"))
-    if major not in {18, 19}:
-        raise ValueError("Only Odoo18 and explicitly qualified19 harnesses are supported")
+    if major < 18:
+        raise ValueError("Odoo majors before18 are unsupported")
     requested = os.environ.get("ODOO_VERSION", f"{major}.0")
     if requested not in {str(major), f"{major}.0"}:
         raise ValueError(f"ODOO_VERSION={requested} conflicts with selected major {major}")
-    if major == 19:
-        from scripts.candidate import verify
-
-        proof = os.environ.get("MCP_18_CANDIDATE_PROOF")
-        if not proof:
-            raise ValueError("Odoo19 requires the same candidate's completed18 proof")
-        verify(Path(proof), complete=True)
     os.environ["ODOO_VERSION"] = f"{major}.0"
     return major
 

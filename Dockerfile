@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 # Consume the already tested candidate wheel; the build context contains no source.
-# scripts/check.py prepares this context from its immutable candidate directory.
+# just image prepares this context from its immutable candidate directory.
 COPY dist/*.whl /candidate/
 RUN uv pip install --python /app/.venv/bin/python --no-deps /candidate/*.whl
 

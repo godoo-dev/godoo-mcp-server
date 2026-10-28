@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "aws4fetch": "1.0.20",
+    "esbuild": "0.28.2",
+    "miniflare": "5.20261023.1-beta"
+  }
+}

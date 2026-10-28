@@ -86,9 +86,9 @@ jobs:
         env:
           RELEASE_REF: ${{ needs.eligibility.outputs.ref }}
         run: |
-          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --release-ref "$RELEASE_REF"
+          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --complete --release-ref "$RELEASE_REF"
           docker load --input "$RUNNER_TEMP/candidate/image.tar"
-          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --release-ref "$RELEASE_REF" --loaded-image
+          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --complete --release-ref "$RELEASE_REF" --loaded-image
 
   promote:
     if: ${{ inputs.publish == true }}
@@ -123,9 +123,9 @@ jobs:
           GHCR_USER: ${{ github.actor }}
           GHCR_REPOSITORY: ${{ github.repository }}
         run: |
-          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --release-ref "$RELEASE_REF"
+          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --complete --release-ref "$RELEASE_REF"
           docker load --input "$RUNNER_TEMP/candidate/image.tar"
-          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --release-ref "$RELEASE_REF" --loaded-image
+          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --complete --release-ref "$RELEASE_REF" --loaded-image
           python - <<'PY'
           import json, os, pathlib, subprocess
           directory = pathlib.Path(os.environ['RUNNER_TEMP']) / 'candidate'

@@ -6,9 +6,6 @@ import copy
 import hashlib
 import io
 import json
-import os
-import subprocess
-import sys
 import tarfile
 import zipfile
 
@@ -86,7 +83,7 @@ def test_loaded_archive_rejects_unrelated_recorded_tag(archived_image):
 def test_required_rejects_every_non_success(result):
     results = {name: {"result": "success"} for name in candidate.MANDATORY}
     candidate.require_results(results)
-    results["odoo18"]["result"] = result
+    results["odoo"]["result"] = result
     with pytest.raises(ValueError):
         candidate.require_results(results)
 
@@ -95,26 +92,6 @@ def test_required_rejects_every_non_success(result):
 def test_required_rejects_missing_or_unexpected_jobs(names):
     with pytest.raises(ValueError):
         candidate.require_results({name: {"result": "success"} for name in names})
-
-
-@pytest.mark.parametrize("requested", [True, False])
-@pytest.mark.parametrize(
-    "state", ["success", "failure", "cancelled", "skipped", "pending", "missing", None]
-)
-def test_requested_compatibility_contributes_to_required(requested, state):
-    results = {name: {"result": "success"} for name in candidate.MANDATORY}
-    if state != "missing":
-        results["odoo19"] = {"result": state}
-    result = subprocess.run(
-        [sys.executable, str(candidate.ROOT / "scripts/candidate.py"), "required"],
-        env={**os.environ, "RESULTS": json.dumps(results), "REQUESTED19": str(requested).lower()},
-        text=True,
-        capture_output=True,
-    )
-    accepted = state == ("success" if requested else "skipped") or (
-        not requested and state == "missing"
-    )
-    assert (result.returncode == 0) == accepted, result.stderr
 
 
 @pytest.mark.parametrize(
@@ -177,7 +154,7 @@ def test_candidate_rejects_identity_or_bytes(packed_candidate, field):
         candidate.verify(directory)
 
 
-def test_later_major_rejects_without_same_candidate18(packed_candidate):
+def test_candidate_requires_image_and_all_matrix_proofs(packed_candidate):
     directory, _ = packed_candidate
     with pytest.raises(KeyError):
         candidate.verify(directory, complete=True)
@@ -197,15 +174,18 @@ def test_candidate_rejects_image_archive_and_major(packed_candidate):
     )
     report = directory / "proof.xml"
     report.write_text('<testsuite tests="1"><testcase name="public-proof"/></testsuite>')
+    qualification = {
+        "image_id": "sha256:" + "c" * 64,
+        "proofs": {
+            name: {**candidate.file_record(report), "tests": 1} for name in ("integration", "image")
+        },
+        "facts": candidate.file_record(facts),
+    }
+    (directory / "odoo-18.json").write_text(json.dumps(qualification))
     manifest.update(
         {
             "image": {"id": "sha256:" + "c" * 64, "archive": candidate.file_record(image)},
-            "odoo18": {"requested_major": 18, "observed_major": 18},
-            "proofs": {
-                name: {**candidate.file_record(report), "tests": 1}
-                for name in ("integration", "image")
-            },
-            "odoo_facts": candidate.file_record(facts),
+            "odoo_majors": [18],
         }
     )
     candidate.write_manifest(directory, manifest)
@@ -219,9 +199,9 @@ def test_candidate_rejects_image_archive_and_major(packed_candidate):
         candidate.write_manifest(directory, changed)
         with pytest.raises(ValueError):
             candidate.verify(directory, complete=True)
-    manifest["odoo18"]["observed_major"] = 19
+    manifest["odoo_majors"] = [18, 19]
     candidate.write_manifest(directory, manifest)
-    with pytest.raises(ValueError):
+    with pytest.raises(FileNotFoundError):
         candidate.verify(directory, complete=True)
 
 
@@ -246,9 +226,8 @@ def test_harness_rejects17_before_provisioning(monkeypatch):
         requested_major()
 
 
-def test_harness_rejects19_before_candidate18(monkeypatch):
-    monkeypatch.setenv("ODOO_VERSION", "19.0")
-    monkeypatch.setenv("MCP_TEST_ODOO_MAJOR", "19")
-    monkeypatch.delenv("MCP_18_CANDIDATE_PROOF", raising=False)
-    with pytest.raises(ValueError):
-        requested_major()
+@pytest.mark.parametrize("major", [18, 19, 20])
+def test_harness_accepts_selected_matrix_major(monkeypatch, major):
+    monkeypatch.setenv("ODOO_VERSION", f"{major}.0")
+    monkeypatch.setenv("MCP_TEST_ODOO_MAJOR", str(major))
+    assert requested_major() == major

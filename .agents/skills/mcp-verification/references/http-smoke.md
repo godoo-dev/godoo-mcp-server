@@ -6,7 +6,7 @@ The maintained executable is:
 scripts/http_probe.py --python "$PWD/.venv/bin/python" --evidence-dir "$evidence/http"
 ```
 
-`check.py offline` and `check.py package` invoke this same driver. It clears
+`just offline` and `just package` invoke this same driver. It clears
 ambient Odoo fallbacks and records responses/server logs before reaping its PID.
 The raw recipe below supports focused diagnosis.
 

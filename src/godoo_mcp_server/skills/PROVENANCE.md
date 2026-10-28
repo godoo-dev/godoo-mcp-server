@@ -24,3 +24,7 @@ creation and module-management/state workflows are not supplied by this bundle.
 Specialist accounting, contracts, attendance, timesheets, product configurator,
 Discuss and MIS Builder material remains outside this first adoption wave.
 Upstream testable examples are source evidence, not verification of these guides.
+
+The query-result delivery guidance is original to this server: inline byte limits,
+private JSON artifact receipts and calculation-code downloads are not upstream
+CLI capabilities. It follows the same CC0-1.0 dedication as this guidance bundle.
