@@ -21,10 +21,30 @@ doubles and do not establish real Odoo effects or client acceptance. For
 documentation-only changes, inspect the documented source, check affected links
 and run `git diff --check`; product tests are not needed merely for wording.
 
-## Qualify guidance in an actual client
+## Guidance workflow acceptance
+
+The required testcontainers suite supplies the client, loopback MCP server and
+disposable Odoo connection. No deployed endpoint, owner credentials or model
+subscription is needed. `test_sdk_guidance_chatter_workflow` uses the locked
+FastMCP SDK over real Streamable HTTP, retrieves guidance through resource and
+tool paths, resolves the recipient's partner ID, posts a formatted note and
+independently reads back its body and audience in Odoo. The SDK denial test
+checks a real portal ACL refusal, correlated telemetry and absence of a write.
+These tests run on both configured Odoo majors through `just odoo` and CI.
+
+Existing interrupted-write cases independently establish exactly one committed
+row after dropped replies, disconnects and process replacement. Together these
+are deterministic acceptance for the server-owned contract in
+[issue #18](https://github.com/godoo-dev/godoo-mcp-server/issues/18).
+
+### Optional product-specific client trials
 
 [Issue #18](https://github.com/godoo-dev/godoo-mcp-server/issues/18) retains
-client acceptance separately from source delivery. For a commissioned trial,
+historical client-policy observations separately from server acceptance.
+Testcontainers cannot establish whether an external model chooses to read
+guidance or how a particular product renders confirmation UI. When reproducing
+one of those observations is commissioned, the MCP/Odoo endpoint can still use
+the disposable harness. For that product-specific trial,
 record the client product/version, connection surface, exact server revision or
 artifact identity, advertised posting schemas and delivered chatter topic. Keep
 credentials and business content out of retained traces and public updates.

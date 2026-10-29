@@ -6,12 +6,15 @@ import asyncio
 import base64
 import hashlib
 import json
+import uuid
 from typing import Any
 from unittest.mock import AsyncMock
 
 import httpx
 import obstore
 import pytest
+from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
 from obstore.store import MemoryStore
 
 from godoo_mcp_server.artifacts import ArtifactStorage
@@ -291,6 +294,132 @@ async def test_process_credentials_and_correlation(
     assert _events(log.read_text(), event="tool_call_finished", request_id=request_id)
     assert second_user_credentials[1] not in log.read_text()
     assert "res.users" not in log.read_text()
+
+
+@pytest.mark.parametrize("guidance_route", ["resource", "tool"])
+async def test_sdk_guidance_chatter_workflow(
+    guidance_route: str, mcp_process: Any, odoo_clients: Any, odoo_harness: Any
+) -> None:
+    """A real SDK consumer executes the served recipe against disposable Odoo."""
+    url, log = mcp_process
+    request_id = str(uuid.uuid4())
+    marker = f"SDK guidance {uuid.uuid4().hex}"
+    async with odoo_clients(server_url=url) as connection:
+        headers = dict(connection.headers)
+    headers["x-request-id"] = request_id
+    async with Client(
+        StreamableHttpTransport(f"{url}/mcp", headers=headers), mode="2026-07-28", timeout=20
+    ) as client:
+        tools = {tool.name: tool for tool in await client.list_tools()}
+        assert tools["guidance_get"].annotations.readOnlyHint is True
+        assert tools["mail_post_message"].annotations.readOnlyHint is False
+        assert "partner_ids" not in tools["mail_log_note"].input_schema["properties"]
+        formats = tools["mail_post_message"].input_schema["properties"]["body_format"]
+        assert formats["default"] == "md" and "html" in formats["enum"]
+
+        for path in ("SKILL.md", "mail/chatter.md"):
+            if guidance_route == "resource":
+                contents = await client.read_resource(f"skill://odoo/{path}")
+            else:
+                result = await client.call_tool("guidance_get", {"path": path})
+                assert not result.is_error
+                contents = result.content
+            text = contents[0].text
+            assert text
+            if path == "SKILL.md":
+                assert "(mail/chatter.md)" in text
+
+        identity = (await client.call_tool("users_whoami")).structured_content
+        found = (
+            await client.call_tool(
+                "users_search_users",
+                {
+                    "domain": [["login", "=", identity["username"]]],
+                    "fields": ["id", "name", "login", "partner_id"],
+                    "limit": 2,
+                },
+            )
+        ).structured_content
+        assert found["count"] == 1
+        user = found["users"][0]
+        assert user["id"] == identity["uid"]
+        partner_id = user["partner_id"][0]
+        target = (
+            await client.call_tool(
+                "record_create", {"model": "res.partner", "values": {"name": marker}}
+            )
+        ).structured_content["id"]
+        body = (
+            "<p><strong>Review</strong> "
+            f'<a href="#" data-oe-model="res.partner" data-oe-id="{partner_id}">'
+            "@Reviewer</a></p>"
+        )
+        posted = await client.call_tool(
+            "mail_post_message",
+            {
+                "model": "res.partner",
+                "res_id": target,
+                "body": body,
+                "body_format": "html",
+                "is_internal": True,
+                "partner_ids": [partner_id],
+            },
+        )
+        assert not posted.is_error
+        message_id = posted.structured_content["message_id"]
+
+    message = (
+        await odoo_harness.client.read(
+            "mail.message", message_id, ["body", "partner_ids", "is_internal", "res_id", "model"]
+        )
+    )[0]
+    assert message["partner_ids"] == [partner_id]
+    assert message["is_internal"] is True
+    assert (message["model"], message["res_id"]) == ("res.partner", target)
+    assert "<strong>Review</strong>" in message["body"]
+    assert f'data-oe-id="{partner_id}"' in message["body"]
+    assert "&lt;" not in message["body"]
+    finished = _events(log.read_text(), event="tool_call_finished", request_id=request_id)
+    assert all(event["category"] == "success" for event in finished)
+    assert sum(event["tool"] == "mail_post_message" for event in finished) == 1
+    assert any(event["tool"] == "guidance_get" for event in finished) is (guidance_route == "tool")
+    assert marker not in log.read_text()
+
+
+async def test_sdk_acl_denial_has_no_write(
+    mcp_process: Any,
+    odoo_clients: Any,
+    second_user_credentials: tuple[str, str],
+    odoo_harness: Any,
+) -> None:
+    """An Odoo refusal is an error reply with no record, unlike a lost write reply."""
+    url, log = mcp_process
+    request_id = str(uuid.uuid4())
+    marker = f"SDK denied {uuid.uuid4().hex}"
+    async with odoo_clients(
+        username=second_user_credentials[0], password=second_user_credentials[1]
+    ) as connection:
+        headers = dict(connection.headers)
+    headers["x-request-id"] = request_id
+    async with Client(
+        StreamableHttpTransport(f"{url}/mcp", headers=headers), mode="2026-07-28", timeout=20
+    ) as client:
+        result = await client.call_tool(
+            "record_create",
+            {"model": "res.partner.category", "values": {"name": marker}},
+            raise_on_error=False,
+        )
+        assert result.is_error
+        assert "Odoo access denied" in result.content[0].text
+    assert not await odoo_harness.client.search_read(
+        "res.partner.category", [["name", "=", marker]], fields=["id"]
+    )
+    events = _events(log.read_text(), event="tool_call_finished", request_id=request_id)
+    assert len(events) == 1
+    assert events[0]["tool"] == "record_create"
+    assert events[0]["category"] == "access_denied"
+    assert events[0]["outcome"] == "error"
+    assert marker not in log.read_text()
 
 
 @pytest.mark.parametrize("interruption", ["drop", "disconnect", "kill", "keepalive"])
