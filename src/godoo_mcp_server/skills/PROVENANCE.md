@@ -28,3 +28,8 @@ Upstream testable examples are source evidence, not verification of these guides
 The query-result delivery guidance is original to this server: inline byte limits,
 private JSON artifact receipts and calculation-code downloads are not upstream
 CLI capabilities. It follows the same CC0-1.0 dedication as this guidance bundle.
+
+The chatter body-format and schema-compatibility guidance is maintained against
+this server's posting tools. Markdown conversion happens in MCP, while Odoo
+retains sanitization, visibility and notification behavior. These additions use
+the same CC0-1.0 dedication.

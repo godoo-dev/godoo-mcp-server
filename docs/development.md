@@ -21,6 +21,50 @@ doubles and do not establish real Odoo effects or client acceptance. For
 documentation-only changes, inspect the documented source, check affected links
 and run `git diff --check`; product tests are not needed merely for wording.
 
+## Guidance workflow acceptance
+
+The required testcontainers suite supplies the client, loopback MCP server and
+disposable Odoo connection. No deployed endpoint, owner credentials or model
+subscription is needed. `test_sdk_guidance_chatter_workflow` uses the locked
+FastMCP SDK over real Streamable HTTP, retrieves guidance through resource and
+tool paths, resolves the recipient's partner ID, posts a formatted note and
+independently reads back its body and audience in Odoo. The SDK denial test
+checks a real portal ACL refusal, correlated telemetry and absence of a write.
+These tests run on both configured Odoo majors through `just odoo` and CI.
+
+Existing interrupted-write cases independently establish exactly one committed
+row after dropped replies, disconnects and process replacement. Together these
+are deterministic acceptance for the server-owned contract in
+[issue #18](https://github.com/godoo-dev/godoo-mcp-server/issues/18).
+
+### Optional product-specific client trials
+
+[Issue #18](https://github.com/godoo-dev/godoo-mcp-server/issues/18) retains
+historical client-policy observations separately from server acceptance.
+Testcontainers cannot establish whether an external model chooses to read
+guidance or how a particular product renders confirmation UI. When reproducing
+one of those observations is commissioned, the MCP/Odoo endpoint can still use
+the disposable harness. For that product-specific trial,
+record the client product/version, connection surface, exact server revision or
+artifact identity, advertised posting schemas and delivered chatter topic. Keep
+credentials and business content out of retained traces and public updates.
+
+In a fresh client conversation, use an owned disposable record and ask to prepare
+an internal review note with a named recipient and formatted text. Do not supply
+the tool sequence. Observe whether the client retrieves `guidance_get` or the
+equivalent resource, resolves a user to their partner ID and selects a format
+present in the advertised schema. The expected preparation stops for an ambiguous
+recipient or unsupported format. Retrieval alone does not establish consumption.
+
+If disposable posting is within the trial's authority, observe the client's
+confirmation flow, then independently read the resulting message body, partner,
+attachment and subtype fields. Retain sanitized request IDs and corresponding
+server events to distinguish a denial before dispatch from a dispatched write
+with a lost reply. Observe a declined confirmation separately: it should stop
+without switching posting tools. Do not retry historical writes or force a client
+policy denial. A completed post proves neither email delivery nor browser
+rendering; record those only when independently observed within scope.
+
 Retain requests and remaining acceptance through
 [mcp-capture](../.agents/skills/mcp-capture/SKILL.md). Before a user/operator
 contract change, use [mcp-docs](../.agents/skills/mcp-docs/SKILL.md) to prepare the

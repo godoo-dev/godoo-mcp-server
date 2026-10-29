@@ -510,6 +510,7 @@ dependencies = [
     { name = "cachetools" },
     { name = "fastmcp" },
     { name = "godoo-client" },
+    { name = "markdown-it-py" },
     { name = "mcp" },
     { name = "obstore" },
 ]
@@ -529,6 +530,7 @@ requires-dist = [
     { name = "cachetools", specifier = ">=7,<8" },
     { name = "fastmcp", specifier = "==4.1.0" },
     { name = "godoo-client", specifier = ">=0.2,<0.3" },
+    { name = "markdown-it-py", specifier = ">=4,<5" },
     { name = "mcp", specifier = "==2.3.0" },
     { name = "obstore", specifier = ">=0.12.1,<0.13" },
 ]
