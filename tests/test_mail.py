@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock
 
 import pytest
+from godoo.client.errors import OdooAccessError, OdooNetworkError
 
 from godoo_mcp_server.tools import mail
 
@@ -234,4 +235,111 @@ async def test_activity_result_and_no_replay(
         [7],
         {"activity_type_id": 3, "date_deadline": "2026-12-31"},
     )
+    client.aclose.assert_awaited_once()
+
+
+@pytest.mark.parametrize("tool", ["mail_log_note", "mail_post_message"])
+@pytest.mark.parametrize(
+    ("body_format", "body", "expected"),
+    [
+        (
+            None,
+            "**Title**\n\n- Item",
+            "<p><strong>Title</strong></p>\n<ul>\n<li>Item</li>\n</ul>\n",
+        ),
+        ("md", "1 < 2 & 3\nnext", "<p>1 &lt; 2 &amp; 3<br />\nnext</p>\n"),
+        ("html", "<p><b>x</b></p><ul><li>Item</li></ul>", "<p><b>x</b></p><ul><li>Item</li></ul>"),
+        ("txt", "<p>**x**</p> &\nnext", "<p>&lt;p&gt;**x**&lt;/p&gt; &amp;<br>next</p>"),
+        (
+            None,
+            '<p><a href="#" data-oe-model="res.partner" data-oe-id="20">@User</a></p>',
+            '<p><a href="#" data-oe-model="res.partner" data-oe-id="20">@User</a></p>',
+        ),
+    ],
+)
+async def test_post_body_formats(mcp_client, monkeypatch, tool, body_format, body, expected):
+    client = AsyncMock()
+    client.call.return_value = 42
+    monkeypatch.setattr(mail, "OdooClient", lambda _config: client)
+    arguments = {"model": "res.partner", "res_id": 7, "body": body}
+    if body_format is not None:
+        arguments["body_format"] = body_format
+    if tool == "mail_post_message":
+        arguments.update(is_internal=True, partner_ids=[20], attachment_ids=[9])
+    response = await mcp_client.post("/mcp", json=_tool_call_body(tool, arguments))
+    result = _parse_sse_json(response.text)["result"]
+    assert not result.get("isError"), result
+    assert json.loads(result["content"][0]["text"]) == {"message_id": 42}
+    client.call.assert_awaited_once_with(
+        "res.partner",
+        "message_post",
+        [7],
+        {
+            "body": expected,
+            "body_is_html": True,
+            "message_type": "comment",
+            "subtype_xmlid": "mail.mt_note",
+            "is_internal": True,
+            "partner_ids": [20] if tool == "mail_post_message" else [],
+            "attachment_ids": [9] if tool == "mail_post_message" else [],
+        },
+    )
+    client.aclose.assert_awaited_once()
+
+
+@pytest.mark.parametrize("tool", ["mail_log_note", "mail_post_message"])
+@pytest.mark.parametrize("body_format", ["md", "html", "txt", "invalid"])
+async def test_bad_body_rejected_before_write(mcp_client, monkeypatch, tool, body_format):
+    client = AsyncMock()
+    monkeypatch.setattr(mail, "OdooClient", lambda _config: client)
+    response = await mcp_client.post(
+        "/mcp",
+        json=_tool_call_body(
+            tool,
+            {
+                "model": "res.partner",
+                "res_id": 7,
+                "body": " ",
+                "body_format": body_format,
+            },
+        ),
+    )
+    assert _parse_sse_json(response.text)["result"]["isError"] is True
+    client.call.assert_not_awaited()
+
+
+async def test_body_format_discovery(mcp_client):
+    response = await mcp_client.post("/mcp", json=_TOOLS_LIST_BODY)
+    tools = _parse_sse_json(response.text)["result"]["tools"]
+    for tool in tools:
+        if tool["name"] in {"mail_log_note", "mail_post_message"}:
+            schema = tool["inputSchema"]["properties"]["body_format"]
+            assert schema["enum"] == ["md", "html", "txt"]
+            assert schema["default"] == "md"
+
+
+@pytest.mark.parametrize("tool", ["mail_log_note", "mail_post_message"])
+@pytest.mark.parametrize(
+    ("error", "diagnostic"),
+    [
+        (OdooAccessError("private detail"), "Odoo access denied"),
+        (
+            OdooNetworkError("private detail"),
+            "write outcome is unknown; do not retry automatically",
+        ),
+    ],
+)
+async def test_post_failure_is_not_replayed(mcp_client, monkeypatch, tool, error, diagnostic):
+    client = AsyncMock()
+    client.call.side_effect = error
+    monkeypatch.setattr(mail, "OdooClient", lambda _config: client)
+    response = await mcp_client.post(
+        "/mcp",
+        json=_tool_call_body(tool, {"model": "res.partner", "res_id": 7, "body": "**Review**"}),
+    )
+    assert _parse_sse_json(response.text)["result"]["isError"] is True
+    assert diagnostic in response.text
+    assert "private detail" not in response.text
+    client.call.assert_awaited_once()
+    assert client.call.call_args.args[1] == "message_post"
     client.aclose.assert_awaited_once()

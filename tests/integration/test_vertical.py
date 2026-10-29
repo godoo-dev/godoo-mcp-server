@@ -364,3 +364,125 @@ async def test_committed_write_is_not_replayed(
             reply.release.set()
             call.cancel()
             await asyncio.gather(call, return_exceptions=True)
+
+
+async def test_mail_html_escaping_reproduction(odoo_harness: Any) -> None:
+    """The same RPC payload without body_is_html reproduces the reported defect."""
+    partner_id = await odoo_harness.client.create("res.partner", {"name": "HTML regression"})
+    body = "<p><b>x</b></p><ul><li>Item</li></ul>"
+    message_id = await odoo_harness.client.call(
+        "res.partner",
+        "message_post",
+        [partner_id],
+        {"body": body, "message_type": "comment", "subtype_xmlid": "mail.mt_note"},
+    )
+    message = (await odoo_harness.client.read("mail.message", message_id, ["body"]))[0]
+    assert "&lt;p&gt;" in message["body"]
+    assert "<b>x</b>" not in message["body"]
+
+
+@pytest.mark.parametrize("tool", ["mail_log_note", "mail_post_message"])
+@pytest.mark.parametrize(
+    ("body_format", "body", "fragments"),
+    [
+        ("html", "<p><b>x</b></p><ul><li>Item</li></ul>", ["<b>x</b>", "<li>Item</li>"]),
+        (None, "<p><b>x</b></p>", ["<b>x</b>"]),
+        ("txt", "<p>**x**</p> &\nnext", ["&lt;p&gt;**x**&lt;/p&gt; &amp;", "<br>", "next"]),
+        (
+            "md",
+            "# Title\n\n**bold** and *emphasis*\n\n- Item\n\n"
+            "[Link](https://example.com)\n\n> Quote\n\n```\nx < 2\n```\n\n"
+            "| A | B |\n| - | - |\n| 1 | 2 |\n\n~~old~~",
+            [
+                "<h1>Title</h1>",
+                "<strong>bold</strong>",
+                "<em>emphasis</em>",
+                "<li>Item</li>",
+                'href="https://example.com"',
+                "<blockquote",
+                "<p>Quote</p>",
+                "</blockquote>",
+                "<pre><code>x &lt; 2",
+                "<table>",
+                "<s>old</s>",
+            ],
+        ),
+    ],
+)
+async def test_mail_body_format_readback(
+    odoo_mcp: httpx.AsyncClient,
+    odoo_harness: Any,
+    tool: str,
+    body_format: str | None,
+    body: str,
+    fragments: list[str],
+) -> None:
+    partner_id = await odoo_harness.client.create("res.partner", {"name": "Format regression"})
+    arguments: dict[str, Any] = {"model": "res.partner", "res_id": partner_id, "body": body}
+    if body_format is not None:
+        arguments["body_format"] = body_format
+    result = _value(await _call(odoo_mcp, tool, **arguments))
+    message = (
+        await odoo_harness.client.read(
+            "mail.message",
+            result["message_id"],
+            ["body", "is_internal", "model", "res_id"],
+        )
+    )[0]
+    assert message["is_internal"] is (tool == "mail_log_note")
+    assert message["model"] == "res.partner"
+    assert message["res_id"] == partner_id
+    for fragment in fragments:
+        assert fragment in message["body"], message["body"]
+    if body_format != "txt":
+        assert "&lt;" not in message["body"].replace("x &lt; 2", "x < 2")
+
+
+@pytest.mark.parametrize("is_internal", [False, True])
+async def test_mail_recipient_attachment_and_mention_readback(
+    odoo_mcp: httpx.AsyncClient, odoo_harness: Any, is_internal: bool
+) -> None:
+    target = await odoo_harness.client.create("res.partner", {"name": "Chatter target"})
+    recipient = await odoo_harness.client.create("res.partner", {"name": "Chatter recipient"})
+    attachment = await odoo_harness.client.create(
+        "ir.attachment",
+        {
+            "name": "review.txt",
+            "datas": base64.b64encode(b"Disposable review attachment").decode(),
+            "res_model": "res.partner",
+            "res_id": target,
+        },
+    )
+    body = f'<p><a href="#" data-oe-model="res.partner" data-oe-id="{recipient}">@Review</a></p>'
+    result = _value(
+        await _call(
+            odoo_mcp,
+            "mail_post_message",
+            model="res.partner",
+            res_id=target,
+            body=body,
+            body_format="html",
+            is_internal=is_internal,
+            partner_ids=[recipient],
+            attachment_ids=[attachment],
+        )
+    )
+    message = (
+        await odoo_harness.client.read(
+            "mail.message",
+            result["message_id"],
+            ["body", "partner_ids", "attachment_ids", "is_internal", "subtype_id"],
+        )
+    )[0]
+    assert message["is_internal"] is is_internal
+    assert message["partner_ids"] == [recipient]
+    assert message["attachment_ids"] == [attachment]
+    assert 'data-oe-model="res.partner"' in message["body"]
+    assert f'data-oe-id="{recipient}"' in message["body"]
+    assert "&lt;" not in message["body"]
+    subtype = await odoo_harness.client.search_read(
+        "ir.model.data",
+        [["module", "=", "mail"], ["name", "=", "mt_note" if is_internal else "mt_comment"]],
+        fields=["res_id"],
+    )
+    assert message["subtype_id"][0] == subtype[0]["res_id"]

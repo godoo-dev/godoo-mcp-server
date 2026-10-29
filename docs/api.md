@@ -33,8 +33,8 @@ An unknown tool path raises `ToolError`.
 | `discovery_list_models` | none | `models` |
 | `discovery_get_fields` | `model`, `attributes=None` | `model`, `fields` |
 | `discovery_list_menus` | `domain=None`, `limit=80` | `menus`, `count` |
-| `mail_post_message` | `model`, `res_id`, `body`, `is_internal=False`, `partner_ids=None`, `attachment_ids=None` | `message_id` |
-| `mail_log_note` | `model`, `res_id`, `body` | `message_id` |
+| `mail_post_message` | `model`, `res_id`, `body`, `is_internal=False`, `partner_ids=None`, `attachment_ids=None`, `body_format="md"` | `message_id` |
+| `mail_log_note` | `model`, `res_id`, `body`, `body_format="md"` | `message_id` |
 | `mail_list_messages` | `model`, `res_id`, `limit=80`, `offset=0` | `messages`, `count` |
 | `mail_schedule_activity` | `model`, `res_id`, `activity_type_id`, `date_deadline`, `note=None`, `user_id=None` | `activity_id` |
 | `mail_list_activities` | `model`, `res_id`, `limit=80` | `activities`, `count` |
@@ -182,3 +182,34 @@ cache state. A resource miss does not establish that a model or addon is absent.
 Guidance retrieval does not install a client-native skill or establish that a
 client follows it. Current source, passing tests, published artifacts, hosted
 runtime and actual client acceptance each need their own evidence.
+
+## Chatter body format
+
+Both posting tools accept `body_format="md"|"html"|"txt"` (default `md`).
+Markdown supports paragraphs, emphasis, lists, links, code, headings, quotes,
+tables and strikethrough using basic HTML; line breaks are preserved. Raw HTML
+inside Markdown is allowed for compatibility with existing HTML callers.
+Use `html` for explicit HTML and structured mention attributes. Odoo sanitizes
+HTML; arbitrary tags, styling and attributes are not guaranteed to survive.
+Use `txt` to preserve literal tags, Markdown characters and line breaks.
+MCP escapes that text into HTML and uses the client's existing HTML posting API.
+No format is inferred from the presence of `<`.
+
+For example: `mail_log_note(model="res.partner", res_id=42,
+body="**Review**\n\n- Check totals", body_format="md")`.
+This changes content formatting only; audience and notification inputs retain
+their meaning. No post-then-write workaround or automatic write retry is used.
+
+`partner_ids` contains `res.partner` IDs, not user IDs. Resolve a user's
+`partner_id` first. Explicit recipients do not restrict all notification delivery
+to that list: followers, subtypes and target customizations can affect it.
+`is_internal=true` selects the internal-note subtype intended for internal
+audiences; target permissions and Odoo behavior determine visibility. Neither
+posting tool guarantees email delivery or zero notifications. `mail_log_note`
+has no recipient-list input; choose `mail_post_message(is_internal=true)` when
+the authorized note needs explicit partners. A denial does not authorize trying
+another tool, and a lost reply needs independent readback before any retry.
+
+Older installations without `body_format` may escape HTML. Inspect the delivered
+schema before posting formatted content and report a mismatch; changing a stored
+message afterward does not correct notifications already sent.
