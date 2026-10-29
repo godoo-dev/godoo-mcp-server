@@ -311,8 +311,8 @@ async def test_sdk_guidance_chatter_workflow(
         StreamableHttpTransport(f"{url}/mcp", headers=headers), mode="2026-07-28", timeout=20
     ) as client:
         tools = {tool.name: tool for tool in await client.list_tools()}
-        assert tools["guidance_get"].annotations.readOnlyHint is True
-        assert tools["mail_post_message"].annotations.readOnlyHint is False
+        assert tools["guidance_get"].annotations.read_only_hint is True
+        assert tools["mail_post_message"].annotations.read_only_hint is False
         assert "partner_ids" not in tools["mail_log_note"].input_schema["properties"]
         formats = tools["mail_post_message"].input_schema["properties"]["body_format"]
         assert formats["default"] == "md" and "html" in formats["enum"]
