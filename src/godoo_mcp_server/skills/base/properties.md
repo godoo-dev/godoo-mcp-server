@@ -50,6 +50,11 @@ For selection choices, explicitly request `attributes` including `selection` as
 well as any other metadata you need; the default attributes omit it.
 Use the returned metadata directly. This tool does not warm the model catalog cache.
 
+For runtime-defined properties, pass `record_id` to obtain the existing record's
+friendly property names and choices. Before a child exists, pass `property_field`
+and `parent_id` instead. The extra `properties` result is parent-specific; use
+the [dynamic properties guide](dynamic-properties.md) for read, update and search.
+
 ## Browse the Menu Hierarchy
 
 Use `discovery_list_menus` to browse the application menu structure.

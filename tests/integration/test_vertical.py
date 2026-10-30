@@ -615,3 +615,238 @@ async def test_mail_recipient_attachment_and_mention_readback(
         fields=["res_id"],
     )
     assert message["subtype_id"][0] == subtype[0]["res_id"]
+
+
+async def test_friendly_properties_workflow(
+    odoo_harness: Any,
+    mcp_process: Any,
+    odoo_clients: Any,
+    odoo_mcp: httpx.AsyncClient,
+    second_user_credentials: tuple[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Discover readable choices, patch and search through real HTTP, then inspect Odoo."""
+    client = odoo_harness.client
+    keys = {
+        name: uuid.uuid4().hex[:16]
+        for name in (
+            "priority",
+            "high",
+            "normal",
+            "effort",
+            "channels",
+            "email",
+            "phone",
+            "approved",
+        )
+    }
+    definitions = [
+        {
+            "name": keys["priority"],
+            "string": "Priority",
+            "type": "selection",
+            "selection": [[keys["high"], "High"], [keys["normal"], "Normal"]],
+        },
+        {"name": keys["effort"], "string": "Estimated effort", "type": "float"},
+        {
+            "name": keys["channels"],
+            "string": "Channels",
+            "type": "tags",
+            "tags": [[keys["email"], "Email", 1], [keys["phone"], "Phone", 2]],
+        },
+        {"name": keys["approved"], "string": "Approved", "type": "boolean"},
+    ]
+    projects: list[int] = []
+    tasks: list[int] = []
+    try:
+        for suffix in ("A", "B"):
+            projects.append(
+                await client.create(
+                    "project.project",
+                    {
+                        "name": f"Friendly properties {suffix} {uuid.uuid4().hex}",
+                        "task_properties_definition": definitions,
+                    },
+                )
+            )
+        for index in range(4):
+            tasks.append(
+                await client.create(
+                    "project.task",
+                    {
+                        "name": f"Friendly task {index}",
+                        "project_id": projects[0],
+                        "task_properties": {
+                            keys["priority"]: keys["high"] if index > 0 else keys["normal"],
+                            keys["effort"]: 3.5,
+                            keys["channels"]: [keys["email"]],
+                            keys["approved"]: True,
+                        },
+                    },
+                )
+            )
+        url, _log = mcp_process
+        async with odoo_clients(server_url=url) as connection:
+            headers = dict(connection.headers)
+        async with Client(
+            StreamableHttpTransport(f"{url}/mcp", headers=headers), mode="2026-07-28", timeout=30
+        ) as sdk:
+            schema = (
+                await sdk.call_tool(
+                    "discovery_get_fields",
+                    {
+                        "model": "project.task",
+                        "record_id": tasks[0],
+                    },
+                )
+            ).structured_content
+            properties = schema["properties"]["task_properties"]
+            priority = next(item for item in properties if item["name"] == "priority")
+            assert priority["values"] == [
+                {"name": "high", "label": "High"},
+                {"name": "normal", "label": "Normal"},
+            ]
+            # Friendly definitions contain no opaque property/option/tag IDs.
+            for key in keys.values():
+                assert key not in json.dumps(schema["properties"])
+            before = (
+                await sdk.call_tool(
+                    "discovery_get_fields",
+                    {
+                        "model": "project.task",
+                        "property_field": "task_properties",
+                        "parent_id": projects[1],
+                    },
+                )
+            ).structured_content
+            assert before["properties"] == schema["properties"]
+            read_args = {
+                "model": "project.task",
+                "ids": [tasks[0]],
+                "fields": ["name", "properties.task_properties"],
+                "max_return_bytes": None,
+            }
+            result = (await sdk.call_tool("record_read", read_args)).structured_content
+            row = result["records"][0]
+            assert set(row) == {"id", "name", "properties"}
+            assert row["properties"]["task_properties"] == {
+                "priority": "normal",
+                "estimated_effort": 3.5,
+                "channels": ["email"],
+                "approved": True,
+            }
+            updated = await sdk.call_tool(
+                "record_update",
+                {
+                    "model": "project.task",
+                    "ids": [tasks[0]],
+                    "values": {"name": "Friendly changed"},
+                    "properties": {"task_properties": {"estimated_effort": 0, "approved": False}},
+                },
+            )
+            assert updated.structured_content["success"] is True
+            raw = (await client.read("project.task", tasks[0], ["name", "task_properties"]))[0]
+            values = {entry["name"]: entry["value"] for entry in raw["task_properties"]}
+            assert raw["name"] == "Friendly changed"
+            assert values[keys["effort"]] == 0 and values[keys["approved"]] is False
+            assert values[keys["priority"]] == keys["normal"]
+            assert values[keys["channels"]] == [keys["email"]]
+            for invalid in (
+                {"project_id": projects[1]},
+                {"task_properties": {keys["priority"]: keys["high"]}},
+            ):
+                denied = await sdk.call_tool(
+                    "record_update",
+                    {
+                        "model": "project.task",
+                        "ids": [tasks[0]],
+                        "values": invalid,
+                        "properties": {"task_properties": {"priority": "high"}},
+                    },
+                    raise_on_error=False,
+                )
+                assert denied.is_error
+            denied = await sdk.call_tool(
+                "record_update",
+                {
+                    "model": "project.task",
+                    "ids": [tasks[0]],
+                    "properties": {"task_properties": {"priority": "missing"}},
+                },
+                raise_on_error=False,
+            )
+            assert denied.is_error and keys["priority"] not in denied.content[0].text
+            after = (
+                await client.read("project.task", tasks[0], ["project_id", "task_properties"])
+            )[0]
+            assert after["project_id"][0] == projects[0]
+            assert after["task_properties"] == raw["task_properties"]
+            found = (
+                await sdk.call_tool(
+                    "record_search",
+                    {
+                        "model": "project.task",
+                        "domain": [
+                            ["project_id", "=", projects[0]],
+                            ["properties.task_properties.priority", "=", "high"],
+                        ],
+                        "fields": ["name", "properties.task_properties.priority"],
+                        "limit": 1,
+                        "offset": 1,
+                        "order": "id asc",
+                        "max_return_bytes": None,
+                    },
+                )
+            ).structured_content
+            assert found["count"] == 1 and found["records"][0]["id"] == tasks[2]
+            assert found["records"][0]["properties"] == {"task_properties": {"priority": "high"}}
+            await sdk.call_tool(
+                "record_update",
+                {
+                    "model": "project.task",
+                    "ids": [tasks[0]],
+                    "properties": {"task_properties": {"estimated_effort": None, "channels": []}},
+                },
+            )
+            cleared = (await sdk.call_tool("record_read", read_args)).structured_content
+            assert (
+                cleared["records"][0]["properties"]["task_properties"]["estimated_effort"] is None
+            )
+            assert cleared["records"][0]["properties"]["task_properties"]["channels"] == []
+        storage = ArtifactStorage(MemoryStore())
+        monkeypatch.setattr(ArtifactStorage, "from_env", lambda: storage)
+        monkeypatch.setattr(
+            obstore, "sign_async", AsyncMock(return_value="https://download.test/file")
+        )
+        artifact = _value(
+            await _call(odoo_mcp, "record_read", **{**read_args, "max_return_bytes": 0})
+        )
+        assert "records" not in artifact
+        key = f"exports/v1/5400/{artifact['artifact_id']}.json"
+        data = await (await obstore.get_async(storage.store, key)).bytes_async()
+        assert json.loads(bytes(data)) == cleared
+        async with odoo_clients(
+            username=second_user_credentials[0], password=second_user_credentials[1]
+        ) as portal:
+            rejected = await _call(
+                portal,
+                "record_update",
+                model="project.task",
+                ids=[tasks[0]],
+                properties={"task_properties": {"priority": "high"}},
+            )
+            assert rejected["isError"] is True
+        final = (await client.read("project.task", tasks[0], ["task_properties"]))[0]
+        assert (
+            next(
+                entry["value"]
+                for entry in final["task_properties"]
+                if entry["name"] == keys["priority"]
+            )
+            == keys["normal"]
+        )
+    finally:
+        if tasks:
+            await client.unlink("project.task", tasks)
+        if projects:
+            await client.unlink("project.project", projects)

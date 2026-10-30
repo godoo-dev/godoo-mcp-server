@@ -1,33 +1,82 @@
-# Dynamic Odoo properties
+# Work with dynamic Odoo properties
 
-Read this before changing a field whose metadata type is `properties`. Do not
-confuse those values with the general schema-discovery guide at `base/properties.md`.
+Use the existing discovery and record tools with readable names under
+`properties.<container>.<name>`. The server resolves Odoo's internal property,
+selection and tag IDs. Do not copy raw property arrays into an update.
 
-Property writes can replace the field's full set of values: omitted keys may be
-cleared. Sending only the changed key through `record_update` is not a safe partial
-update. Read representation can include metadata, labels and relation display values;
-it is not necessarily the object accepted for writing.
+## Discover names and choices
 
-Common examples are `crm.lead.lead_properties` with definitions on `crm.team`, and
-`project.task.task_properties` with definitions on `project.project`. Discover this
-target's actual fields and parent definitions before relying on those examples.
-Changing a shared definition can affect every record using it and is distinct from
-changing one record's value.
+For an existing task, use the real record ID:
 
-For a request to change one value:
+```json
+{"model":"project.task","record_id":42}
+```
 
-1. Inspect the field type, current complete property values and applicable definitions
-   through permitted metadata/record reads. Preserve unknown and false-valued keys.
-2. Establish the supported write format for this version and property types, including
-   relation values. Do not pass the metadata-rich read array back unchanged.
-3. Explain the replacement and concurrent-edit risk. This MCP does not expose the
-   predecessor's `client.properties.*` helpers, an atomic merge, or conditional writes.
-   Do not invent a helper or call read-merge-write atomic/safe against concurrent edits.
-4. Proceed only with a supported full-value operation within the authorized scope
-   and acceptable concurrency conditions. If a partial change cannot be made reliably
-   with these interfaces, report that limitation before writing. Verify all preserved
-   values as well as the changed one if an operation is performed.
+Pass these arguments to `discovery_get_fields`. Its `properties.task_properties`
+list describes each value with `name`, `label`, `type` and, for selections/tags,
+`values` such as `[{"name":"high","label":"High"}]`. Use the returned `name`
+for both property keys and choices. For definitions before a task exists, use
+`property_field="task_properties", parent_id=7` instead of `record_id`.
 
-Do not modify a parent definition, create a server action or change Odoo configuration
-to work around the missing partial-update interface. A normal record mutation request
-does not authorize those broader changes.
+These names and IDs are illustrative. Discover the actual container field and
+parent on the target. Definitions depend on the parent: two projects can have
+different task properties. Reading a child does not grant access to its parent.
+Missing access is an error, not an empty definition set.
+
+Names derive from labels using Unicode normalization, case folding and underscores
+for punctuation/whitespace. The property path uses a fixed English naming context.
+A rename requires rediscovery. Ambiguous names are rejected; the server never adds
+opaque IDs or positional suffixes. Ask for distinct source labels when ambiguity
+prevents the intended operation; changing shared definitions is a separate action
+requiring its own authorization.
+
+## Read and change values
+
+Use `record_read` with the discovered container or a particular property:
+
+```json
+{"model":"project.task","ids":[42],"fields":["name","properties.task_properties"],"max_return_bytes":null}
+```
+
+Each returned record contains a plain object, for example
+`"properties":{"task_properties":{"priority":"high","estimated_effort":3.5}}`.
+Use `properties.task_properties.priority` in `fields` to select just Priority.
+The ordinary read representation remains available outside the friendly namespace.
+The usual byte threshold and private artifact delivery apply to the entire result.
+
+For an authorized change, call `record_update` with one record:
+
+```json
+{"model":"project.task","ids":[42],"properties":{"task_properties":{"priority":"normal","estimated_effort":null}}}
+```
+
+Supplied keys are sparse changes; omitted keys remain unchanged. `null` clears a
+value. Valid zero, false, empty strings and lists are preserved according to the
+property type; use `null`, rather than false, to clear a nonboolean scalar. Tags
+and many2many values replace that property's entire list, without relation commands.
+Relational properties use ordinary numeric record IDs, like other relational fields.
+
+Ordinary `values` can accompany `properties` in the same call. The server validates
+and composes one Odoo write. Do not combine a parent change or a raw write to the
+same container with friendly properties. Batch property writes are unsupported.
+Read back the affected and preserved values when verification is needed.
+
+Read/merge/write is non-atomic: it cannot prevent concurrent lost updates, preserve
+hidden stored keys or prevent parent moves after preflight. A positive write reply
+is acknowledgement, not readback verification. If dispatch loses its reply, inspect
+actual state before deciding to retry; never retry automatically.
+
+## Search using the same vocabulary
+
+Constrain the query to one definition parent and use friendly paths in the domain:
+
+```json
+{"model":"project.task","domain":[["project_id","=",7],["properties.task_properties.priority","=","high"]],"fields":["name","properties.task_properties.priority"],"limit":20,"order":"id asc","max_return_bytes":null}
+```
+
+The server translates predicates before ordering, offset and limit. Search `count`
+still means returned page length. Start with a conjunction of parent equality and
+property comparisons; complex scopes and unsupported property operators fail rather
+than producing an approximate filtered page. Ordering by properties is unsupported.
+Search results use the same nested values as reads. This is not a database snapshot;
+records and definitions may change between search and projection.

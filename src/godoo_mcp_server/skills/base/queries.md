@@ -62,6 +62,10 @@ Use `in`/`not in` with arrays. For a many2one ID compare to a number, not a read
 Do not paste Python expressions or domain strings into the JSON list.
 
 Dotted relation domains such as `stage_id.fold` are passed unchanged to Odoo.
+Friendly `properties.<container>.<name>` paths resolve discovered property names
+and choices before pagination. These predicates initially require a conjunction
+constrained to one definition parent; see [dynamic properties](dynamic-properties.md).
+Property projection can add definition and record reads after selecting the page.
 A stage's `fold` is a Kanban display setting, not a universal completion flag.
 Inspect the model's state/selection fields and actual stage records to establish
 open/closed semantics. Names such as Done/Cancelled alone do not establish field

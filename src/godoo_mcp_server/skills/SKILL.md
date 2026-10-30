@@ -14,7 +14,7 @@ lists every bundled topic. Serving this bundle does not install a client-native 
 - [Field formats](base/field-types.md): relation values, selection keys, dates and datetimes.
 - [Queries](base/queries.md): domains, bounded pages, date ranges and open/closed semantics.
 - [Record changes](base/record-changes.md): create/update/delete, relation commands and readback.
-- [Dynamic properties](base/dynamic-properties.md): read before changing any properties field.
+- [Dynamic properties](base/dynamic-properties.md): discover, read, change and search friendly property names.
 - [Chatter](mail/chatter.md): messages, notes, recipients and mentions.
 - [Activities](mail/activities.md): numeric type discovery, scheduling and completion.
 
@@ -62,5 +62,6 @@ considering a retry. Keep mutation and notification scope within the user's requ
 Record search/read result objects (inline or downloaded) contain `web_urls` keyed by ID;
 successful updates return
 `web_urls`, and creates return `web_url`; deletes have no link. Odoo field values
-are unchanged. Links use the configured base URL and `/web#model=…&id=…` convention.
+are unchanged outside the explicit `properties.` projection of friendly names and
+choices. Links use the configured base URL and `/web#model=…&id=…` convention.
 Browser access and a model's form availability are separate; no portal token is minted.

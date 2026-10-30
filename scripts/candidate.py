@@ -186,11 +186,12 @@ def loaded_image_ref(directory: Path, manifest: dict) -> str:
 
 def validate_facts(path: Path, major: int) -> list:
     facts = [json.loads(line) for line in path.read_text().splitlines()]
+    expected_modules = (["base", "mail", "project"], ["base", "mail"])
     if len(facts) != 2 or any(
         row.get("requested_major") != major
         or row.get("observed_major") != major
-        or row.get("modules") != ["base", "mail"]
-        for row in facts
+        or row.get("modules") != modules
+        for row, modules in zip(facts, expected_modules, strict=True)
     ):
         raise ValueError(f"Missing observed Odoo{major} facts for both harnesses")
     return facts
