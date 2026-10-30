@@ -1,133 +1,145 @@
-# button = rehearse (workflow_dispatch → TestPyPI)
-# tag = ship (v* push → production PyPI + Docker → GHCR)
-#
-# Two-path routing (D-08):
-#   workflow_dispatch  → publish-testpypi only  (rehearse, OIDC environment: testpypi)
-#   push tags v*       → publish-pypi + publish-docker  (ship, OIDC environment: pypi)
-#
-# All PyPI publish jobs use Trusted Publisher (OIDC) — no stored API tokens (D-07).
-# Docker job pushes to GHCR using GITHUB_TOKEN — no stored Docker credentials.
-#
-# Prerequisites (one-time manual setup, see 05-05-PLAN.md):
-#   1. Register godoo-mcp-server project on pypi.org + test.pypi.org
-#   2. Configure Trusted Publisher on pypi.org: repo=godoo-dev/godoo-mcp-server,
-#      workflow=publish.yml, environment=pypi
-#   3. Configure Trusted Publisher on test.pypi.org: same fields, environment=testpypi
-#   4. Create GitHub environments "pypi" and "testpypi" in repository Settings
-
 name: Publish
 
 on:
-  workflow_dispatch:    # manual button → TestPyPI (rehearse)
-  push:
-    tags:
-      - "v*"            # git tag push → production PyPI + Docker (ship)
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Immutable v<metadata-version> tag reachable from main
+        required: true
+        type: string
+      publish:
+        description: Publish the same-run tested wheel and image (protected environment)
+        type: boolean
+        default: false
+      registry:
+        description: Package registry (both choices publish when enabled)
+        type: choice
+        options: [pypi, testpypi]
+        default: pypi
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-promotion
+  cancel-in-progress: false
 
 jobs:
+  eligibility:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.identity.outputs.sha }}
+      ref: ${{ steps.identity.outputs.ref }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.14.8'
+      - name: Resolve eligible immutable tag before validation or credentials
+        id: identity
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          python - <<'PY'
+          import os, re, subprocess
+          tag = os.environ['RELEASE_TAG']
+          if os.environ['DISPATCH_REF'] != 'refs/heads/main':
+              raise SystemExit('Dispatch the release workflow from main')
+          if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:[a-zA-Z0-9.+-]*)', tag):
+              raise SystemExit('Expected an immutable v<version> tag')
+          ref = 'refs/tags/' + tag
+          sha = subprocess.check_output(['git', 'rev-parse', ref + '^{commit}'], text=True).strip()
+          subprocess.run(['git', 'checkout', '--detach', sha], check=True)
+          subprocess.run(['python', 'scripts/candidate.py', 'release-ref', '--ref', ref], check=True)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'sha={sha}\nref={ref}\n')
+          PY
 
-  build:
+  validation:
+    needs: eligibility
+    uses: ./.github/workflows/ci.yml
+    with:
+      source_sha: ${{ needs.eligibility.outputs.sha }}
+      source_ref: ${{ needs.eligibility.outputs.ref }}
+
+  preflight:
+    needs: [eligibility, validation]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          version: "latest"
-
-      - name: Build distribution artifacts
-        run: uv build
-
-      - name: Upload dist artifacts
-        uses: actions/upload-artifact@v4
+          ref: ${{ needs.eligibility.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
-          name: dist
-          path: dist/
+          python-version: '3.14.8'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: tested-candidate
+          path: ${{ runner.temp }}/candidate
+      - name: Reject mismatched source/ref/version/wheel/archive and loaded image
+        env:
+          RELEASE_REF: ${{ needs.eligibility.outputs.ref }}
+        run: |
+          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --complete --release-ref "$RELEASE_REF"
+          docker load --input "$RUNNER_TEMP/candidate/image.tar"
+          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --complete --release-ref "$RELEASE_REF" --loaded-image
 
-  publish-testpypi:
-    # Runs only on manual workflow_dispatch (button = rehearse)
-    if: github.event_name == 'workflow_dispatch'
-    needs: build
+  promote:
+    if: ${{ inputs.publish == true }}
+    needs: [eligibility, validation, preflight]
     runs-on: ubuntu-latest
-    environment: testpypi      # must match Trusted Publisher config on test.pypi.org
-    permissions:
-      id-token: write           # required for OIDC Trusted Publisher exchange
-    steps:
-      - uses: actions/checkout@v4   # required: uv publish --index reads pyproject.toml
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          version: "latest"
-
-      - name: Download dist artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Publish to TestPyPI
-        run: uv publish --index testpypi --trusted-publishing always
-
-  publish-pypi:
-    # Runs only on v* tag push (tag = ship → production)
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: build
-    runs-on: ubuntu-latest
-    environment: pypi            # must match Trusted Publisher config on pypi.org
-    permissions:
-      id-token: write             # required for OIDC Trusted Publisher exchange
-    steps:
-      - uses: actions/checkout@v4   # required: uv publish reads pyproject.toml
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          version: "latest"
-
-      - name: Download dist artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Publish to PyPI
-        run: uv publish --trusted-publishing automatic
-
-  publish-docker:
-    # Runs only on v* tag push (tag = ship → GHCR)
-    # Depends on build completing (serializes jobs, avoids wasted parallel run if build fails).
-    # Does NOT consume the dist artifact — docker/build-push-action builds from source (D-03).
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: build
-    runs-on: ubuntu-latest
+    environment: ${{ inputs.registry }}
     permissions:
       contents: read
-      packages: write             # required for GHCR push via GITHUB_TOKEN
+      id-token: write
+      packages: write
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
+          ref: ${{ needs.eligibility.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
         with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+          version: '0.12.5'
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          python-version: '3.14.8'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: tested-candidate
+          path: ${{ runner.temp }}/candidate
+      - name: Verify and promote exact tested bytes without rebuilding
+        env:
+          RELEASE_REF: ${{ needs.eligibility.outputs.ref }}
+          REGISTRY: ${{ inputs.registry }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --complete --release-ref "$RELEASE_REF"
+          docker load --input "$RUNNER_TEMP/candidate/image.tar"
+          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --complete --release-ref "$RELEASE_REF" --loaded-image
+          python - <<'PY'
+          import json, os, pathlib, subprocess
+          directory = pathlib.Path(os.environ['RUNNER_TEMP']) / 'candidate'
+          candidate = json.loads((directory / 'candidate.json').read_text())
+          command = ['uv', 'publish', '--trusted-publishing', 'always']
+          if os.environ['REGISTRY'] == 'testpypi':
+              command += ['--index', 'testpypi']
+          subprocess.run(command + [str(directory / candidate['wheel']['file'])], check=True)
+          # TestPyPI is a real publication; it does not also publish a production image.
+          if os.environ['REGISTRY'] == 'pypi':
+              subprocess.run(['docker', 'login', 'ghcr.io', '--username', os.environ['GHCR_USER'],
+                              '--password-stdin'], input=os.environ['GHCR_TOKEN'], text=True, check=True)
+              image = 'ghcr.io/' + os.environ['GHCR_REPOSITORY'].lower() + ':' + candidate['version']
+              subprocess.run(['docker', 'tag', candidate['image']['tag'], image], check=True)
+              subprocess.run(['docker', 'push', image], check=True)
+              subprocess.run(['docker', 'image', 'inspect', '--format', '{{json .RepoDigests}}', image], check=True)
+          PY

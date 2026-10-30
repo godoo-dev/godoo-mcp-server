@@ -6,18 +6,43 @@ Provides: mail_post_message, mail_log_note, mail_list_messages,
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import re
+from html import escape
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastmcp import Context  # noqa: TC002
-from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_request
 from godoo.client.client import OdooClient, OdooClientConfig
 from godoo.client.errors import OdooError
+from godoo.client.services.mail import (
+    PostMessageOptions,
+    post_internal_note,
+    post_open_message,
+)
+from markdown_it import MarkdownIt
 
+from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
 from godoo_mcp_server.server import mcp
 
 if TYPE_CHECKING:
     from godoo_mcp_server.credentials import OdooCredentials
+
+BodyFormat = Literal["md", "html", "txt"]
+_markdown = MarkdownIt("commonmark", {"html": True, "breaks": True}).enable(
+    ["table", "strikethrough"]
+)
+
+
+def _html_body(body: str, body_format: BodyFormat) -> str:
+    """Convert at the MCP boundary; Odoo still sanitizes the stored HTML."""
+    if body_format == "md":
+        return str(_markdown.render(body))
+    if body_format == "html":
+        return body
+    if body_format == "txt":
+        # Use the client's established HTML API, including with released clients.
+        return f"<p>{escape(body).replace(chr(10), '<br>')}</p>" if body.strip() else ""
+    raise ValueError("body_format must be md, html or txt")
 
 
 def _make_config(creds: OdooCredentials) -> OdooClientConfig:
@@ -31,15 +56,21 @@ def _make_config(creds: OdooCredentials) -> OdooClientConfig:
 
 @mcp.tool(
     name="mail_post_message",
+    annotations={"readOnlyHint": False},
     description=(
         "Post a message to any Odoo record's chatter (mail.thread mixin)."
         " Calls message_post on the given model/res_id."
         " model: Odoo model name (e.g. 'res.partner')."
         " res_id: numeric record id."
-        " body: message body text or HTML."
-        " is_internal: True to post as internal note (visible only to internal users)."
-        " partner_ids: list of partner ids to notify."
+        " body: message content. body_format: md (default), html or txt."
+        " Markdown becomes basic Odoo HTML; txt preserves literal text; Odoo sanitizes HTML."
+        " is_internal: True selects the internal-note subtype, intended for internal audiences."
+        " partner_ids: res.partner IDs to notify, not res.users IDs; resolve users' partner_id."
+        " Explicit recipients do not exclude followers or other Odoo notification behavior."
+        " Posting does not guarantee email delivery or a particular visibility policy."
         " attachment_ids: list of existing ir.attachment ids to link."
+        " Returns message_id. A lost write reply needs readback before retry."
+        " Denial stops the call."
     ),
 )
 async def mail_post_message(
@@ -50,35 +81,41 @@ async def mail_post_message(
     is_internal: bool = False,
     partner_ids: list[int] | None = None,
     attachment_ids: list[int] | None = None,
+    body_format: BodyFormat = "md",
 ) -> dict[str, object]:
     """Post a message on any record's chatter. Calls message_post on mail.thread mixin."""
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
-            html_body = body if "<" in body else f"<p>{body}</p>"
-            subtype_xmlid = "mail.mt_note" if is_internal else "mail.mt_comment"
-            kwargs: dict[str, Any] = {
-                "body": html_body,
-                "message_type": "comment",
-                "subtype_xmlid": subtype_xmlid,
-                "is_internal": is_internal,
-                "partner_ids": partner_ids or [],
-                "attachment_ids": attachment_ids or [],
-            }
-            result = await client.call(model, "message_post", [res_id], kwargs)
-            result_id = result[0] if isinstance(result, list) else int(result)
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
+            post = post_internal_note if is_internal else post_open_message
+            result_id = await post(
+                client,
+                model,
+                res_id,
+                _html_body(body, body_format),
+                PostMessageOptions(
+                    partner_ids=partner_ids or [], attachment_ids=attachment_ids or []
+                ),
+            )
             return {"message_id": result_id}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e, write_may_have_dispatched=True) from None
 
 
 @mcp.tool(
     name="mail_log_note",
+    annotations={"readOnlyHint": False},
     description=(
         "Post an internal note on any Odoo record's chatter."
         " Calls message_post with is_internal=True and subtype_xmlid='mail.mt_note'."
-        " model: Odoo model name. res_id: numeric record id. body: note text or HTML."
+        " model: Odoo model name. res_id: numeric record id. body: note content."
+        " body_format: md (default), html or txt."
+        " Markdown becomes basic Odoo HTML; txt preserves literal text; Odoo sanitizes HTML."
+        " No recipient-list input; use mail_post_message(is_internal=True) for explicit partners."
+        " Intended for internal audiences; Odoo controls visibility and notifications."
+        " Does not guarantee zero emails. Returns message_id."
+        " A lost write reply needs readback before retry; denial stops the call."
     ),
 )
 async def mail_log_note(
@@ -86,30 +123,24 @@ async def mail_log_note(
     model: str,
     res_id: int,
     body: str,
+    body_format: BodyFormat = "md",
 ) -> dict[str, object]:
     """Log an internal note on a record's chatter. Calls message_post with mt_note subtype."""
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
-            html_body = body if "<" in body else f"<p>{body}</p>"
-            kwargs: dict[str, Any] = {
-                "body": html_body,
-                "message_type": "comment",
-                "subtype_xmlid": "mail.mt_note",
-                "is_internal": True,
-                "partner_ids": [],
-                "attachment_ids": [],
-            }
-            result = await client.call(model, "message_post", [res_id], kwargs)
-            result_id = result[0] if isinstance(result, list) else int(result)
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
+            result_id = await post_internal_note(
+                client, model, res_id, _html_body(body, body_format)
+            )
             return {"message_id": result_id}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e, write_may_have_dispatched=True) from None
 
 
 @mcp.tool(
     name="mail_list_messages",
+    annotations={"readOnlyHint": True},
     description=(
         "List chatter messages for an Odoo record."
         " Calls search_read on mail.message with domain filtered by model and res_id."
@@ -129,7 +160,7 @@ async def mail_list_messages(
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             domain: list[Any] = [["model", "=", model], ["res_id", "=", res_id]]
             records = await client.search_read(
                 "mail.message",
@@ -149,16 +180,17 @@ async def mail_list_messages(
             )
             return {"messages": records, "count": len(records)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(
     name="mail_schedule_activity",
+    annotations={"readOnlyHint": False},
     description=(
         "Schedule an activity on any Odoo record."
         " Calls activity_schedule on the mail.activity.mixin."
         " model: Odoo model name. res_id: numeric record id."
-        " activity_type_id: id of the activity type (e.g. 1 for Email, 2 for Call)."
+        " activity_type_id: numeric id from this instance's mail.activity.type records."
         " date_deadline: due date in YYYY-MM-DD format."
         " note: optional activity note. user_id: optional assignee user id."
     ),
@@ -172,14 +204,11 @@ async def mail_schedule_activity(
     note: str | None = None,
     user_id: int | None = None,
 ) -> dict[str, object]:
-    """Schedule an activity on a record. Calls activity_schedule on mail.activity.mixin.
-
-    # [ASSUMED A1] activity_schedule — verify method name against integration container.
-    """
+    """Schedule one activity and normalize Odoo's singleton recordset RPC result."""
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             kwargs: dict[str, Any] = {
                 "activity_type_id": activity_type_id,
                 "date_deadline": date_deadline,
@@ -189,13 +218,28 @@ async def mail_schedule_activity(
             if user_id is not None:
                 kwargs["user_id"] = user_id
             result = await client.call(model, "activity_schedule", [res_id], kwargs)
+            # Odoo18 serializes a recordset as text; Odoo19 returns its IDs.
+            # Accept only the single activity returned for this single record;
+            # an unrecognized result remains an unknown write, never a retry.
+            if (
+                isinstance(result, list)
+                and len(result) == 1
+                and type(result[0]) is int
+                and result[0] > 0
+            ):
+                result = result[0]
+            if isinstance(result, str):
+                recordset = re.fullmatch(r"mail\.activity\(([1-9][0-9]*),?\)", result)
+                if recordset is not None:
+                    result = int(recordset.group(1))
             return {"activity_id": int(result)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e, write_may_have_dispatched=True) from None
 
 
 @mcp.tool(
     name="mail_list_activities",
+    annotations={"readOnlyHint": True},
     description=(
         "List pending activities for an Odoo record."
         " Calls search_read on mail.activity filtered by model and res_id."
@@ -213,7 +257,7 @@ async def mail_list_activities(
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             domain: list[Any] = [["res_model", "=", model], ["res_id", "=", res_id]]
             records = await client.search_read(
                 "mail.activity",
@@ -231,11 +275,12 @@ async def mail_list_activities(
             )
             return {"activities": records, "count": len(records)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(
     name="mail_mark_activity_done",
+    annotations={"readOnlyHint": False},
     description=(
         "Mark an activity as done with optional feedback."
         " Calls action_feedback on mail.activity."
@@ -255,7 +300,7 @@ async def mail_mark_activity_done(
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             result = await client.call(
                 "mail.activity",
                 "action_feedback",
@@ -264,4 +309,4 @@ async def mail_mark_activity_done(
             )
             return {"success": bool(result)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e, write_may_have_dispatched=True) from None

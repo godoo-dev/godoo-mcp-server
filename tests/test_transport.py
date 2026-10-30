@@ -13,10 +13,15 @@ The response body is: "event: message\r\ndata: {JSON}\r\n\r\n"
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+import logging
+from types import SimpleNamespace
 
-if TYPE_CHECKING:
-    from httpx import AsyncClient
+import pytest
+from fastmcp.exceptions import ToolError
+from httpx import AsyncClient
+
+from godoo_mcp_server.odoo_runtime import ClassifiedToolError
+from godoo_mcp_server.server import ToolTelemetryMiddleware
 
 _TOOLS_LIST_BODY = {"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 1}
 
@@ -64,6 +69,31 @@ async def test_tools_list_contains_whoami(mcp_client: AsyncClient) -> None:
     )
 
 
+async def test_server_discover_reports_fixed_capabilities(mcp_client: AsyncClient) -> None:
+    response = await AsyncClient.post(
+        mcp_client,
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "server/discover",
+            "params": {
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                    "io.modelcontextprotocol/clientCapabilities": {},
+                }
+            },
+            "id": 2,
+        },
+        headers={"mcp-method": "server/discover"},
+    )
+    assert response.status_code == 200, response.text
+    result = _parse_sse_json(response.text)["result"]
+    assert isinstance(result, dict)
+    assert result["supportedVersions"] == ["2026-07-28"]
+    assert result["capabilities"]["resources"] == {"subscribe": False, "listChanged": False}
+    assert result["capabilities"]["tools"]["listChanged"] is False
+
+
 async def test_stateless_no_session_id_repeated(mcp_client: AsyncClient) -> None:
     """TRANS-01: Two consecutive POSTs — neither response contains mcp-session-id."""
     resp1 = await mcp_client.post("/mcp", json=_TOOLS_LIST_BODY)
@@ -73,3 +103,176 @@ async def test_stateless_no_session_id_repeated(mcp_client: AsyncClient) -> None
     )
     assert "mcp-session-id" not in resp1.headers, "First response has mcp-session-id"
     assert "mcp-session-id" not in resp2.headers, "Second response has mcp-session-id"
+
+
+async def test_request_correlation_header_is_returned(mcp_client: AsyncClient) -> None:
+    request_id = "0084a94f-b12b-4019-b5e6-62f6fe71ef10"
+    resp = await mcp_client.post(
+        "/mcp", json=_TOOLS_LIST_BODY, headers={"x-request-id": request_id}
+    )
+    assert resp.headers["x-request-id"] == request_id
+
+
+async def test_method_header_mismatch_is_rejected_before_tool_dispatch(
+    mcp_client: AsyncClient,
+) -> None:
+    body = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+            "name": "record_create",
+            "arguments": {"model": "res.partner", "values": {}},
+            "_meta": {
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                "io.modelcontextprotocol/clientCapabilities": {},
+            },
+        },
+        "id": 77,
+    }
+    # Bypass the fixture's modern-header helper to deliberately send a mismatch.
+    response = await AsyncClient.post(
+        mcp_client,
+        "/mcp",
+        json=body,
+        headers={"mcp-method": "tools/list", "mcp-name": "record_create"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == -32020
+
+
+async def test_modern_metadata_is_required(mcp_client: AsyncClient) -> None:
+    body = {**_TOOLS_LIST_BODY, "params": {}}
+    response = await AsyncClient.post(
+        mcp_client,
+        "/mcp",
+        json=body,
+        headers={"mcp-method": "tools/list"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == -32602
+
+
+async def test_malformed_json_returns_jsonrpc_parse_error(mcp_client: AsyncClient) -> None:
+    response = await AsyncClient.post(
+        mcp_client,
+        "/mcp",
+        content=b"{",
+        headers={"content-type": "application/json"},
+    )
+    assert response.status_code == 400
+    assert response.json() == {
+        "jsonrpc": "2.0",
+        "id": None,
+        "error": {"code": -32700, "message": "Parse error"},
+    }
+
+
+async def test_unsupported_protocol_versions_are_rejected(mcp_client: AsyncClient) -> None:
+    for metadata_version, header_version in (
+        ("2024-11-05", "2026-07-28"),
+        ("2026-07-28", "2027-01-01"),
+    ):
+        response = await AsyncClient.post(
+            mcp_client,
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "method": "tools/list",
+                "params": {
+                    "_meta": {
+                        "io.modelcontextprotocol/protocolVersion": metadata_version,
+                        "io.modelcontextprotocol/clientCapabilities": {},
+                    }
+                },
+                "id": 92,
+            },
+            headers={
+                "mcp-method": "tools/list",
+                "mcp-protocol-version": header_version,
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["id"] == 92
+
+
+async def test_modern_ping_and_standalone_get_are_unavailable(
+    mcp_client: AsyncClient,
+) -> None:
+    response = await mcp_client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "method": "ping", "params": {}, "id": 91},
+    )
+    assert response.status_code == 404
+    assert "method not found" in response.text.lower()
+    get_response = await mcp_client.get("/mcp")
+    assert get_response.status_code == 405
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "expected_category", "expected_outcome", "expected_diagnostic"),
+    [
+        ("record_search", "internal_error", "error", "Tool operation failed"),
+        (
+            "record_create",
+            "unknown_write",
+            "uncertain",
+            "Tool write outcome is unknown; do not retry automatically",
+        ),
+    ],
+)
+async def test_unexpected_tool_errors_are_safe_and_correlated(
+    caplog: pytest.LogCaptureFixture,
+    tool_name: str,
+    expected_category: str,
+    expected_outcome: str,
+    expected_diagnostic: str,
+) -> None:
+    middleware = ToolTelemetryMiddleware()
+    context = SimpleNamespace(message=SimpleNamespace(name=tool_name))
+
+    async def fail(_context: object) -> None:
+        raise RuntimeError("raw request body, password, and JWT sentinel")
+
+    with pytest.raises(ClassifiedToolError, match=expected_diagnostic):
+        await middleware.on_call_tool(context, fail)  # type: ignore[arg-type]
+
+    assert "raw request body" not in caplog.text
+    event = next(
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if '"event":"tool_call_finished"' in record.getMessage()
+    )
+    assert event["category"] == expected_category
+    assert event["outcome"] == expected_outcome
+
+
+async def test_framework_wrapped_tool_error_is_sanitized(caplog: pytest.LogCaptureFixture) -> None:
+    middleware = ToolTelemetryMiddleware()
+    context = SimpleNamespace(message=SimpleNamespace(name="record_search"))
+
+    async def fail(_context: object) -> None:
+        raise ToolError("framework wrapped raw password and body sentinels")
+
+    with pytest.raises(ClassifiedToolError, match="Tool operation failed") as caught:
+        await middleware.on_call_tool(context, fail)  # type: ignore[arg-type]
+
+    assert "raw password" not in str(caught.value)
+    assert "sentinels" not in caplog.text
+
+
+def test_fastmcp_default_exception_logs_are_redacted(capsys: pytest.CaptureFixture[str]) -> None:
+    framework_logger = logging.getLogger("fastmcp.server.server")
+    try:
+        raise RuntimeError("password=PASSWORD_SENTINEL body=BODY_SENTINEL")
+    except RuntimeError:
+        framework_logger.exception("request had JWT_SENTINEL and COOKIE_SENTINEL")
+    output = capsys.readouterr().err
+
+    assert "FastMCP request failed" in output
+    for sentinel in (
+        "PASSWORD_SENTINEL",
+        "BODY_SENTINEL",
+        "JWT_SENTINEL",
+        "COOKIE_SENTINEL",
+    ):
+        assert sentinel not in output

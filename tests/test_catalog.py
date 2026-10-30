@@ -12,10 +12,8 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock
-
-import pytest
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 from godoo_mcp_server.catalog import (
     CacheKey,
@@ -42,6 +40,7 @@ def _make_mock_client(
     *,
     write_date: str = _FAKE_WRITE_DATE,
     model_rows: list[dict[str, object]] | None = None,
+    uid: int = 1,
 ) -> AsyncMock:
     """Build an AsyncMock OdooClient for catalog tests.
 
@@ -65,6 +64,7 @@ def _make_mock_client(
         ]
         * 10  # repeat enough times for multi-call tests
     )
+    mock.get_session = Mock(return_value=SimpleNamespace(uid=uid))
     return mock
 
 
@@ -120,7 +120,6 @@ async def test_cache_hit_no_rpc() -> None:
 
     first = await get_catalog_snapshot(mock, "http://odoo.test", "mydb")
     assert first["cached"] is False
-    call_count_after_first = mock.search_read.call_count
 
     # Rebuild mock for second call: re-register same probes so hash is identical
     # We need a fresh side_effect list for the 3 hash probes on the second call.
@@ -170,37 +169,28 @@ async def test_cache_snapshot_none_on_hash_failure() -> None:
 
 
 # ---------------------------------------------------------------------------
-# D-12: Credential-free cache key
+# Per-user cache isolation
 # ---------------------------------------------------------------------------
 
 
-async def test_cache_key_excludes_credentials() -> None:
-    """D-12 / T-04-03-01: CacheKey never contains user credentials.
-
-    Two users with different passwords but the same Odoo target produce
-    identical CacheKey tuples — credentials are not part of the key.
-    """
-    # User 1 cache key (computed with admin password)
-    key_user1: CacheKey = ("http://odoo.test", "mydb", "hash1")
-    # User 2 cache key (computed with user2 password)
-    key_user2: CacheKey = ("http://odoo.test", "mydb", "hash1")
-
-    # Same URL + database + schema_hash → same key regardless of credentials
-    assert key_user1 == key_user2
+async def test_cache_key_contains_authenticated_uid_but_no_credentials() -> None:
+    key_user1 = CacheKey(url="http://odoo.test", database="mydb", uid=2, schema_hash="hash1")
+    key_user2 = CacheKey(url="http://odoo.test", database="mydb", uid=7, schema_hash="hash1")
+    assert key_user1 != key_user2
+    assert "password" not in repr(key_user1)
 
 
-async def test_two_users_same_target_share_cache() -> None:
-    """D-12: Two distinct user clients on the same Odoo target share the same cache entry."""
+async def test_two_users_same_target_do_not_share_cache() -> None:
+    """Different authenticated UIDs cannot read catalog snapshots from each other."""
     _catalog_cache.clear()
 
     # "User 1" populates the cache
-    mock_user1 = _make_mock_client()
+    mock_user1 = _make_mock_client(uid=2)
     first = await get_catalog_snapshot(mock_user1, "http://odoo.test", "mydb")
     assert first["cached"] is False
 
-    # "User 2" — different mock object (different credentials in practice),
-    # but same hash probes → same key → cache hit
     mock_user2 = AsyncMock()
+    mock_user2.get_session = Mock(return_value=SimpleNamespace(uid=7))
     mock_user2.search_read = AsyncMock(
         side_effect=[
             [{"write_date": _FAKE_WRITE_DATE}],
@@ -210,7 +200,20 @@ async def test_two_users_same_target_share_cache() -> None:
         * 10
     )
     second = await get_catalog_snapshot(mock_user2, "http://odoo.test", "mydb")
-    assert second["cached"] is True
+    assert second["cached"] is False
+
+
+async def test_catalog_without_authenticated_uid_is_not_cached() -> None:
+    """An absent session cannot create a cache entry shared across identities."""
+    _catalog_cache.clear()
+    mock = _make_mock_client()
+    mock.get_session = Mock(return_value=None)
+
+    result = await get_catalog_snapshot(mock, "http://odoo.test", "mydb")
+
+    assert result["cached"] is False
+    assert result["models"] == _CORE_MODEL_ROWS
+    assert len(_catalog_cache) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -222,27 +225,37 @@ def test_get_model_entry_from_cache_returns_none_when_cold() -> None:
     """Cache cold → get_model_entry_from_cache returns None (no await, no Odoo)."""
     _catalog_cache.clear()
 
-    result = get_model_entry_from_cache("res.partner")
+    result = get_model_entry_from_cache(
+        "res.partner", url="http://odoo.test", database="mydb", uid=1
+    )
 
     assert result is None
 
 
-async def test_get_model_entry_from_cache_returns_entry_after_snapshot() -> None:
-    """After a cache-warming snapshot, get_model_entry_from_cache finds the model."""
+async def test_get_model_entry_from_cache_is_scoped_to_authenticated_uid() -> None:
     _catalog_cache.clear()
     mock = _make_mock_client(model_rows=[{"model": "res.partner", "name": "Contact", "info": ""}])
 
+    mock.get_session = Mock(return_value=SimpleNamespace(uid=8))
     await get_catalog_snapshot(mock, "http://odoo.test", "mydb")
 
-    entry = get_model_entry_from_cache("res.partner")
+    entry = get_model_entry_from_cache(
+        "res.partner", url="http://odoo.test", database="mydb", uid=8
+    )
     assert entry is not None
     assert entry["model"] == "res.partner"
+    assert (
+        get_model_entry_from_cache("res.partner", url="http://odoo.test", database="mydb", uid=2)
+        is None
+    )
 
 
 def test_get_model_entry_from_cache_returns_none_for_unknown_model() -> None:
     """Non-introspected model not in any snapshot → returns None."""
     _catalog_cache.clear()
 
-    result = get_model_entry_from_cache("account.move")
+    result = get_model_entry_from_cache(
+        "account.move", url="http://odoo.test", database="mydb", uid=1
+    )
 
     assert result is None

@@ -1,28 +1,56 @@
 """MCP resource registration: odoo:// catalog resources + skill:// file resources.
 
-IMPORTANT: Resource resolvers cannot use get_http_request() — no per-request
-credentials are available in the resources/read dispatch path. Resolvers read
-from the catalog cache (warmed by prior tool calls) or from bundled skill files.
+Model resources are scoped to the authenticated Odoo UID and target. A resource
+request without an authenticated UID receives a cold-cache result; skill resources
+remain available to every request.
 """
 
 from __future__ import annotations
 
 import importlib.resources
-from typing import Any
+from typing import Annotated, Any, NamedTuple, TypedDict
 
-from godoo_mcp_server.catalog import get_model_entry_from_cache
+from fastmcp.exceptions import ToolError
+from fastmcp.server.dependencies import get_http_request
+from godoo.client.client import OdooClient, OdooClientConfig
+from godoo.client.errors import OdooError
+from pydantic import Field
+
+from godoo_mcp_server.catalog import CatalogModelRow, get_model_entry_from_cache
+from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
 from godoo_mcp_server.server import mcp
 
 # ---------------------------------------------------------------------------
 # Skill file loading (runs at import time — SKILL-02 startup assertion)
 # ---------------------------------------------------------------------------
 
-_SKILL_PATHS = [
-    "SKILL.md",
-    "mail/chatter.md",
-    "mail/activities.md",
-    "base/properties.md",
-]
+
+class GuidanceTopic(NamedTuple):
+    title: str
+    description: str
+
+
+# One manifest drives packaged loading, discovery metadata and tool path schema.
+_SKILL_TOPICS = {
+    "SKILL.md": GuidanceTopic("Odoo", "Start here: select a workflow for the current Odoo target."),
+    "base/properties.md": GuidanceTopic("Schema discovery", "Inspect models and field metadata."),
+    "base/field-types.md": GuidanceTopic(
+        "Field formats", "Relations, selections and date formats."
+    ),
+    "base/queries.md": GuidanceTopic("Queries", "Bounded searches, domains and stage semantics."),
+    "base/record-changes.md": GuidanceTopic(
+        "Record changes", "CRUD, relation commands and readback."
+    ),
+    "base/dynamic-properties.md": GuidanceTopic(
+        "Dynamic properties",
+        "Discover, read, patch and search friendly property names and choices.",
+    ),
+    "mail/chatter.md": GuidanceTopic(
+        "Chatter", "Messages, internal notes, recipients and mentions."
+    ),
+    "mail/activities.md": GuidanceTopic("Activities", "Type discovery, scheduling and completion."),
+}
+_SKILL_PATHS = list(_SKILL_TOPICS)
 _SKILL_FILES: dict[str, str] = {}  # populated at import; never mutated after
 
 
@@ -54,27 +82,51 @@ _load_skills()  # runs at side-effect import time (server.py imports this module
 # ---------------------------------------------------------------------------
 
 
+class ModelResourceNotFound(TypedDict):
+    error: str
+    model: str
+    hint: str
+
+
 @mcp.resource(
     "odoo://model/{name}",
     name="Odoo Model",
     description=(
         "Model metadata and fields for a named Odoo model. "
-        "Cache-served: call discovery_get_fields first to warm."
+        "Cache-served; use discovery_get_fields for current field metadata."
     ),
     mime_type="application/json",
 )
-async def read_model_resource(name: str) -> dict[str, Any]:
+async def read_model_resource(name: str) -> CatalogModelRow | ModelResourceNotFound:
     """Return cached model metadata for the given model name.
 
     Returns an error dict (not an exception) when the cache is cold.
-    Callers should invoke discovery_get_fields to warm the catalog first.
+    Callers can invoke discovery_get_fields for current field metadata directly.
     """
-    entry = get_model_entry_from_cache(name)
+    request = get_http_request()
+    creds = request.state.odoo_creds
+    config = OdooClientConfig(
+        url=creds.url,
+        database=creds.database,
+        username=creds.username,
+        password=creds.password,
+    )
+    try:
+        async with managed_odoo_client(OdooClient(config)) as client:
+            session = client.get_session()
+            uid = session.uid if session is not None else None
+    except OdooError as error:
+        raise safe_tool_error(error) from None
+    entry = (
+        get_model_entry_from_cache(name, url=creds.url, database=creds.database, uid=uid)
+        if isinstance(uid, int) and uid > 0
+        else None
+    )
     if entry is None:
         return {
             "error": "model_not_found",
             "model": name,
-            "hint": "call discovery_get_fields to warm the catalog",
+            "hint": "call discovery_get_fields for current field metadata",
         }
     return entry
 
@@ -98,7 +150,9 @@ async def read_action_resource(id: str) -> dict[str, Any]:
     return {
         "error": "action_not_found",
         "id": id,
-        "hint": "call action_list_actions tool to list actions, then use action_execute_action to run them",
+        "hint": (
+            "call action_list_actions to list actions, then use action_execute_action to run them"
+        ),
     }
 
 
@@ -147,6 +201,15 @@ def read_skill_index() -> dict[str, Any]:
                 "url": "skill://odoo/SKILL.md",
             }
         ],
+        "topics": [
+            {
+                "path": path,
+                "title": topic.title,
+                "description": topic.description,
+                "url": f"skill://odoo/{path}",
+            }
+            for path, topic in _SKILL_TOPICS.items()
+        ],
     }
 
 
@@ -165,3 +228,21 @@ def read_skill_file(path: str) -> str:
     if content is None:
         return f"# Not Found\n\nSkill file '{path}' not found."
     return content
+
+
+@mcp.tool(
+    name="guidance_get",
+    description=(
+        "Read bundled Odoo guidance before using Odoo tools. Defaults to the skills index; "
+        "select a listed path for detailed guidance. Also available via skill://odoo/{path} "
+        "resources. Guidance does not grant write approval or override client policy."
+    ),
+    annotations={"readOnlyHint": True, "openWorldHint": False},
+)
+def guidance_get(
+    path: Annotated[str, Field(json_schema_extra={"enum": _SKILL_PATHS})] = "SKILL.md",
+) -> str:
+    """Expose the same bundled guidance to clients that only expose MCP tools."""
+    if path not in _SKILL_FILES:
+        raise ToolError("Unknown guidance path; use a path listed in the guidance index")
+    return _SKILL_FILES[path]

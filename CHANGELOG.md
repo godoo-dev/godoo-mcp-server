@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Friendly dynamic property names and choices through existing discovery, read,
+  update and scoped search tools, including sparse single-record changes.
+
 ## [0.1.0] - 2026-06-03
 
 ### Added

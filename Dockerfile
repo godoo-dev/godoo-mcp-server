@@ -4,10 +4,10 @@
 # Source: docs.astral.sh/uv/guides/integration/docker/ + hynek.me/articles/docker-uv/
 
 # ---- builder ----
-FROM python:3.14-slim AS builder
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS builder
 
 # Copy uv binary from official image (T-05-12: pinned version for supply-chain integrity)
-COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.12.5@sha256:e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1 /uv /bin/uv
 
 WORKDIR /app
 
@@ -18,17 +18,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --frozen --no-dev --no-install-project
 
-# Copy full source tree, then install project non-editable.
-# --no-editable embeds the package (+ skill .md files) into .venv/lib/python3.14/site-packages/
-# so importlib.resources.files("godoo_mcp_server") resolves correctly in the runtime stage
-# (RESEARCH Pitfall 2: omitting --no-editable breaks importlib.resources in multi-stage builds).
-COPY . /app
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-editable
+# Consume the already tested candidate wheel; the build context contains no source.
+# just image prepares this context from its immutable candidate directory.
+COPY dist/*.whl /candidate/
+RUN uv pip install --python /app/.venv/bin/python --no-deps /candidate/*.whl
 
 # ---- runtime ----
 # T-05-11: runtime stage copies only .venv — no uv binary, no source tree, no build cache.
-FROM python:3.14-slim
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
 
 WORKDIR /app
 

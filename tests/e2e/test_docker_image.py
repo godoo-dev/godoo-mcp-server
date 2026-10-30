@@ -1,22 +1,17 @@
-"""E2E test: build Docker image from source and smoke-test it against a real Odoo testcontainer.
+"""Exercise an exact prebuilt candidate image against observed disposable Odoo18.
 
-SC-2/REL-02 — Phase 05-05 automated Docker smoke-test gate.
-
-Skips cleanly when:
-  - `docker` CLI is not available on PATH (no daemon / not installed)
-  - `docker build` fails to reach a daemon
-
-Does NOT require the claude CLI or a Claude API key.
+The caller owns the candidate image. This fixture never rebuilds or deletes it.
+Missing Docker or a candidate fails; billable Claude is not involved.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import socket
 import subprocess
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -26,14 +21,11 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from godoo.testcontainers import StartedOdooContainer
+    from godoo.testcontainers import TestHarness
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-# Tag used for the test image — cleaned up in fixture teardown.
-_IMAGE_TAG = "godoo-mcp-server:e2e-test"
 
 # The MCP server always listens on container port 8000 (baked into HEALTHCHECK).
 _CONTAINER_PORT = 8000
@@ -48,11 +40,10 @@ _MCP_PATH = "/mcp"
 _STANDARD_MCP_HEADERS: dict[str, str] = {
     "content-type": "application/json",
     "accept": "application/json, text/event-stream",
-    "mcp-protocol-version": "2024-11-05",
+    "mcp-protocol-version": "2026-07-28",
+    "mcp-method": "tools/call",
+    "mcp-name": "record_search",
 }
-
-# Repo root: two levels up from this file (tests/e2e/test_docker_image.py → repo root)
-_REPO_ROOT = Path(__file__).parent.parent.parent
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +66,7 @@ def _parse_sse_json(text: str) -> dict[str, Any]:
     """
     for line in text.splitlines():
         if line.startswith("data:"):
-            return dict(json.loads(line[len("data:"):].strip()))
+            return dict(json.loads(line[len("data:") :].strip()))
     return dict(json.loads(text))
 
 
@@ -105,43 +96,25 @@ def _odoo_url_for_container(harness_url: str) -> str:
 
 
 @pytest.fixture(scope="session")
-def docker_image() -> Generator[str]:
-    """Build the project Docker image once per session; yield the tag; remove on teardown.
-
-    Skips the entire test module if:
-      - `docker` is not on PATH
-      - `docker build` fails (e.g. no daemon, build error in Dockerfile)
-    """
+def docker_image() -> str:
+    """Require a prebuilt image, retaining all caller-owned images after the test."""
     if shutil.which("docker") is None:
-        pytest.skip("docker CLI not on PATH — skipping Docker smoke-test")
-
-    result = subprocess.run(
-        ["docker", "build", "-t", _IMAGE_TAG, str(_REPO_ROOT)],
-        capture_output=True,
-        text=True,
-        timeout=600,  # Docker builds can be slow — allow up to 10 min
-    )
-    if result.returncode != 0:
-        pytest.skip(
-            f"docker build failed (no daemon or build error) — skipping Docker smoke-test.\n"
-            f"stdout: {result.stdout[-2000:]}\nstderr: {result.stderr[-2000:]}"
-        )
-
-    try:
-        yield _IMAGE_TAG
-    finally:
-        # Best-effort cleanup — do not fail the test if removal fails.
-        subprocess.run(
-            ["docker", "rmi", "--force", _IMAGE_TAG],
-            capture_output=True,
-            timeout=30,
-        )
+        pytest.fail("docker CLI is required")
+    subprocess.run(["docker", "info"], check=True, capture_output=True, timeout=30)
+    image = os.environ.get("MCP_CANDIDATE_IMAGE")
+    if not image:
+        pytest.fail("MCP_CANDIDATE_IMAGE must identify the prebuilt candidate")
+    identity = subprocess.check_output(
+        ["docker", "image", "inspect", "--format", "{{.Id}}", image], text=True
+    ).strip()
+    # Resolve tags before starting any process; the container consumes this exact ID.
+    return identity
 
 
 @pytest.fixture(scope="session")
 def mcp_container(
     docker_image: str,
-    odoo_harness: StartedOdooContainer,
+    odoo_harness: TestHarness,
 ) -> Generator[str]:
     """Run the MCP server Docker image against the Odoo testcontainer. Yields base_url.
 
@@ -152,7 +125,7 @@ def mcp_container(
 
     Port mapping: -p <free_host_port>:8000 — we pick a free ephemeral port rather than
     using -p 0:8000 + docker port because subprocess + port inspection adds a race;
-    binding our own ephemeral port is atomic.
+    the port is selected per invocation. Docker bind failures fail the test.
 
     No PORT env override: the HEALTHCHECK is baked to port 8000 inside the container.
     We only map the host side.
@@ -168,7 +141,7 @@ def mcp_container(
                 "--rm",
                 # Map host ephemeral port → container 8000 (baked HEALTHCHECK port).
                 "-p",
-                f"{host_port}:{_CONTAINER_PORT}",
+                f"127.0.0.1:{host_port}:{_CONTAINER_PORT}",
                 # Ensure host.docker.internal resolves on Linux Docker hosts too.
                 "--add-host",
                 "host.docker.internal:host-gateway",
@@ -176,7 +149,7 @@ def mcp_container(
                 # The test sends X-Odoo-* headers per-request (D-07 header path).
                 # ODOO_URL is NOT injected here — credentials come via request headers.
                 # (We do NOT want fallback env creds overriding per-request headers.)
-                _IMAGE_TAG,
+                docker_image,
             ],
             capture_output=True,
             text=True,
@@ -187,6 +160,30 @@ def mcp_container(
                 f"docker run failed:\nstdout: {run_result.stdout}\nstderr: {run_result.stderr}"
             )
         container_id = run_result.stdout.strip()
+        identity = subprocess.check_output(
+            ["docker", "inspect", "--format", "{{.Image}}", container_id], text=True
+        ).strip()
+        assert identity == docker_image
+        runtime_user = subprocess.check_output(
+            ["docker", "exec", container_id, "id", "-u"], text=True
+        ).strip()
+        assert runtime_user != "0"
+        expected = os.environ["MCP_EXPECTED_VERSION"]
+        installed = subprocess.check_output(
+            ["docker", "exec", container_id, "godoo-mcp-server", "--version"], text=True
+        ).strip()
+        assert installed == f"godoo-mcp-server {expected}"
+        print(
+            "TESTED_IMAGE",
+            json.dumps(
+                {
+                    "id": identity,
+                    "container_id": container_id,
+                    "user": runtime_user,
+                    "version": expected,
+                }
+            ),
+        )
         base_url = f"http://127.0.0.1:{host_port}"
 
         # Poll /healthz until the server is ready (timeout _HEALTHZ_TIMEOUT_S seconds).
@@ -198,7 +195,7 @@ def mcp_container(
                     r = client.get(f"{base_url}/healthz")
                 if r.status_code == 200:
                     break
-            except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError) as exc:
+            except httpx.TransportError as exc:
                 last_error = exc
             time.sleep(0.5)
         else:
@@ -235,7 +232,7 @@ def mcp_container(
 @pytest.mark.e2e
 def test_docker_image_record_search(
     mcp_container: str,
-    odoo_harness: StartedOdooContainer,
+    odoo_harness: TestHarness,
 ) -> None:
     """SC-2/REL-02: built Docker image serves a real MCP record_search tool call.
 
@@ -265,6 +262,11 @@ def test_docker_image_record_search(
                 "model": "res.partner",
                 "domain": [],
                 "limit": 1,
+                "max_return_bytes": None,
+            },
+            "_meta": {
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                "io.modelcontextprotocol/clientCapabilities": {},
             },
         },
         "id": 1,
@@ -285,9 +287,7 @@ def test_docker_image_record_search(
     result = body.get("result", {})
 
     assert isinstance(result, dict), f"Expected result dict, got: {result!r}"
-    assert result.get("isError") is not True, (
-        f"record_search returned isError=True: {result}"
-    )
+    assert result.get("isError") is not True, f"record_search returned isError=True: {result}"
 
     content = result.get("content", [])
     assert len(content) > 0, f"Empty content in record_search response: {result}"
@@ -299,6 +299,4 @@ def test_docker_image_record_search(
     assert isinstance(search_result["records"], list), (
         f"'records' must be a list, got: {search_result['records']!r}"
     )
-    # limit=1 means 0 or 1 records — any list (including empty) is valid
-    # (empty is valid if Odoo has no partners, though base always has at least one)
-    assert len(search_result["records"]) >= 0, "records must be a list"
+    assert len(search_result["records"]) == 1, "base module must provide a real partner"

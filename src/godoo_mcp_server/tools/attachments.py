@@ -5,15 +5,15 @@ Provides: attachments_list, attachments_upload, attachments_download.
 
 from __future__ import annotations
 
-import base64
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context  # noqa: TC002
-from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_request
 from godoo.client.client import OdooClient, OdooClientConfig
 from godoo.client.errors import OdooError
 
+from godoo_mcp_server.artifacts import deliver_artifact
+from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
 from godoo_mcp_server.server import mcp
 
 if TYPE_CHECKING:
@@ -31,6 +31,7 @@ def _make_config(creds: OdooCredentials) -> OdooClientConfig:
 
 @mcp.tool(
     name="attachments_list",
+    annotations={"readOnlyHint": True},
     description=(
         "List ir.attachment records. Optionally filter by res_model and/or res_id"
         " to get attachments for a specific record."
@@ -46,11 +47,11 @@ async def attachments_list(
     res_model: str | None = None,
     res_id: int | None = None,
 ) -> dict[str, object]:
-    """List ir.attachment records. Builds effective domain from domain + res_model/res_id filters."""
+    """List ir.attachment records with optional resource filters."""
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             effective_domain: list[Any] = list(domain or [])
             if res_model is not None:
                 effective_domain.append(["res_model", "=", res_model])
@@ -59,16 +60,25 @@ async def attachments_list(
             records = await client.search_read(
                 "ir.attachment",
                 effective_domain,
-                fields=["id", "name", "mimetype", "file_size", "res_model", "res_id", "create_date"],
+                fields=[
+                    "id",
+                    "name",
+                    "mimetype",
+                    "file_size",
+                    "res_model",
+                    "res_id",
+                    "create_date",
+                ],
                 limit=limit,
             )
             return {"attachments": records, "count": len(records)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(
     name="attachments_upload",
+    annotations={"readOnlyHint": False},
     description=(
         "Upload a file as an ir.attachment linked to an Odoo record."
         " name: filename for the attachment."
@@ -91,7 +101,7 @@ async def attachments_upload(
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             new_id = await client.create(
                 "ir.attachment",
                 {
@@ -104,15 +114,19 @@ async def attachments_upload(
             )
             return {"id": new_id}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e, write_may_have_dispatched=True) from None
 
 
 @mcp.tool(
     name="attachments_download",
+    annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
     description=(
-        "Download an ir.attachment by id, returning content as base64."
+        "Download an ir.attachment by id through a private signed URL."
+        " Returns filename, MIME type, byte size, SHA-256 and expiry/cleanup metadata;"
+        " never returns binary content or base64. Requires configured artifact storage."
+        " Odoo is only read; delivery creates a temporary stored copy."
         " If the attachment has no binary content (empty datas field),"
-        " returns an error dict instead of empty base64."
+        " returns an error dict."
         " attachment_id: numeric id of the ir.attachment record."
     ),
 )
@@ -124,7 +138,7 @@ async def attachments_download(
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
-        async with OdooClient(_make_config(creds)) as client:
+        async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
             data = await client.read_binary("ir.attachment", attachment_id, "datas")
             if not data:
                 return {"error": "attachment_has_no_content", "id": attachment_id}
@@ -132,12 +146,14 @@ async def attachments_download(
                 "ir.attachment", [attachment_id], fields=["name", "mimetype"]
             )
             meta: dict[str, Any] = records_meta[0] if records_meta else {}
-            return {
-                "id": attachment_id,
-                "name": meta.get("name", ""),
-                "mimetype": meta.get("mimetype", "application/octet-stream"),
-                "content_base64": base64.b64encode(data).decode(),
-                "size_bytes": len(data),
-            }
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None
+    name = meta.get("name") or "attachment"
+    mimetype = meta.get("mimetype") or "application/octet-stream"
+    receipt = await deliver_artifact(
+        data,
+        source={"tool": "attachments_download", "model": "ir.attachment"},
+        filename=name,
+        mimetype=mimetype,
+    )
+    return {**receipt, "id": attachment_id, "name": name, "mimetype": mimetype}

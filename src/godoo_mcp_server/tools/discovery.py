@@ -5,11 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context  # noqa: TC002
-from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_request
 from godoo.client.client import OdooClient, OdooClientConfig
 from godoo.client.errors import OdooError
+from pydantic import StrictInt  # noqa: TC002
 
+from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
+from godoo_mcp_server.properties import discover as discover_properties
 from godoo_mcp_server.server import mcp
 
 if TYPE_CHECKING:
@@ -27,13 +29,14 @@ _DEFAULT_FIELD_ATTRS: list[str] = [
 
 @mcp.tool(
     name="discovery_list_models",
+    annotations={"readOnlyHint": True},
     description=(
-        "List all available Odoo models (technical name, label, description)."
+        "List up to 500 accessible Odoo models (technical name, label, description)."
         " Use discovery_get_fields to inspect a model's fields before operating on it."
     ),
 )
 async def discovery_list_models(ctx: Context) -> dict[str, object]:
-    """Return all Odoo models accessible to the current user."""
+    """Return up to 500 Odoo models accessible to the current user."""
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     config = OdooClientConfig(
@@ -43,30 +46,36 @@ async def discovery_list_models(ctx: Context) -> dict[str, object]:
         password=creds.password,
     )
     try:
-        async with OdooClient(config) as client:
+        async with managed_odoo_client(OdooClient(config)) as client:
             models = await client.search_read(
                 "ir.model",
                 [],
                 fields=["model", "name", "info"],
-                limit=500,  # safe cap above any realistic model count (Open Question 2)
+                limit=500,
                 order="model",
             )
             return {"models": models}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(
     name="discovery_get_fields",
+    annotations={"readOnlyHint": True},
     description=(
         "Return field metadata for an Odoo model. Includes type, label, required,"
-        " readonly, help text, and relational target model."
+        " readonly, help text, and relational target model. Pass record_id for friendly"
+        " property names and allowed choices, or property_field + parent_id before a"
+        " child record exists. Properties are scoped to their definition parent."
     ),
 )
 async def discovery_get_fields(
     ctx: Context,
     model: str,
     attributes: list[str] | None = None,
+    record_id: StrictInt | None = None,
+    property_field: str | None = None,
+    parent_id: StrictInt | None = None,
 ) -> dict[str, object]:
     """Return field metadata for the given Odoo model."""
     request = get_http_request()
@@ -78,18 +87,28 @@ async def discovery_get_fields(
         password=creds.password,
     )
     try:
-        async with OdooClient(config) as client:
+        async with managed_odoo_client(OdooClient(config)) as client:
             fields: dict[str, Any] = await client.fields_get(
                 model,
                 attributes=attributes or _DEFAULT_FIELD_ATTRS,
             )
-            return {"model": model, "fields": fields}
+            result: dict[str, object] = {"model": model, "fields": fields}
+            if record_id is not None or property_field is not None or parent_id is not None:
+                result["properties"] = await discover_properties(
+                    client,
+                    model,
+                    record_id=record_id,
+                    property_field=property_field,
+                    parent_id=parent_id,
+                )
+            return result
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(
     name="discovery_list_menus",
+    annotations={"readOnlyHint": True},
     description=(
         "List Odoo application menus (ir.ui.menu). Returns menu entries ordered by sequence."
         " Use domain to filter by parent or action type."
@@ -110,7 +129,7 @@ async def discovery_list_menus(
         password=creds.password,
     )
     try:
-        async with OdooClient(config) as client:
+        async with managed_odoo_client(OdooClient(config)) as client:
             menus = await client.search_read(
                 "ir.ui.menu",
                 domain or [],
@@ -120,4 +139,4 @@ async def discovery_list_menus(
             )
             return {"menus": menus, "count": len(menus)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None

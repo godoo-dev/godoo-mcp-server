@@ -5,9 +5,11 @@ added by partners or in-house developers. Never assume you know the schema. Use 
 discovery tools to inspect the actual structure of any Odoo instance before operating
 on it.
 
-## List All Models
+## List Models
 
-Use `discovery_list_models` to see every model installed in the instance.
+Use `discovery_list_models` to list up to 500 accessible models. A missing entry
+does not prove a model or module is absent; use a focused `record_search` on
+`ir.model` or request the known model's fields when permitted.
 
 **When to use:** At the start of a task when you do not know the technical model name
 yet, or when exploring an unfamiliar Odoo instance.
@@ -32,7 +34,7 @@ how models are related to each other.
 
 **Required information:** The technical model name obtained from `discovery_list_models`.
 
-**What it returns:** A list of field descriptors. Each descriptor includes:
+**What it returns:** A `fields` mapping keyed by field name. Each descriptor includes:
 - The field identifier (the name used in domains and field lists)
 - The field type (text, number, date, boolean, relationship, etc.)
 - Whether the field is required
@@ -44,8 +46,14 @@ how models are related to each other.
 3. Use those field identifiers in `record_search` domain conditions and `record_read`
    field lists.
 
-This call also warms the model catalog cache, which enables the `odoo://model/{name}`
-MCP resource to serve schema information without a live Odoo call.
+For selection choices, explicitly request `attributes` including `selection` as
+well as any other metadata you need; the default attributes omit it.
+Use the returned metadata directly. This tool does not warm the model catalog cache.
+
+For runtime-defined properties, pass `record_id` to obtain the existing record's
+friendly property names and choices. Before a child exists, pass `property_field`
+and `parent_id` instead. The extra `properties` result is parent-specific; use
+the [dynamic properties guide](dynamic-properties.md) for read, update and search.
 
 ## Browse the Menu Hierarchy
 
@@ -55,7 +63,7 @@ Use `discovery_list_menus` to browse the application menu structure.
 applications are installed, what sections exist under each application, or to map
 menu entries to the models they display.
 
-**What it returns:** A hierarchical list of menu entries. Each entry has a display
+**What it returns:** A flat list of menu entries with parent references. Each entry has a display
 name, an identifier, and optionally a parent entry. Top-level entries correspond to
 main applications (Sales, Purchase, Accounting, etc.).
 
@@ -77,5 +85,5 @@ Field identifiers and model technical names are stable within an Odoo version an
 module set but can differ across versions or when modules are installed or uninstalled.
 Always re-discover after a suspected schema change.
 
-The catalog cache is in-process and lost on server restart. After a restart, the
-first `discovery_get_fields` call for a given model re-warms the cache for that model.
+The catalog cache is in-process and lost on server restart; do not rely on a prior
+request having warmed it. `discovery_get_fields` makes a direct authenticated call.

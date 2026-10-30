@@ -1,0 +1,14 @@
+# Python runtime and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local environment, Odoo test data, and build output
+.venv/
+.odoo-testcontainers/
+dist/
+node_modules/

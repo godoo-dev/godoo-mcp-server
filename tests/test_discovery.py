@@ -23,9 +23,9 @@ def _parse_sse_json(text: str) -> dict[str, object]:
     """
     for line in text.splitlines():
         if line.startswith("data:"):
-            return cast(dict[str, object], json.loads(line[len("data:") :].strip()))
+            return cast("dict[str, object]", json.loads(line[len("data:") :].strip()))
     # Fallback: try parsing directly as JSON (for json_response=True mode)
-    return cast(dict[str, object], json.loads(text))
+    return cast("dict[str, object]", json.loads(text))
 
 
 async def test_list_models_odoo_error(mcp_client: AsyncClient) -> None:
@@ -95,7 +95,7 @@ async def test_discovery_tools_in_tool_list(mcp_client: AsyncClient) -> None:
 
 
 async def test_list_menus_odoo_error(mcp_client: AsyncClient) -> None:
-    """DISC-03 + ERR-01: fake credentials -> OdooAuthError -> isError=True for discovery_list_menus."""
+    """Bad credentials produce a safe isError response for discovery_list_menus."""
     body = {
         "jsonrpc": "2.0",
         "method": "tools/call",

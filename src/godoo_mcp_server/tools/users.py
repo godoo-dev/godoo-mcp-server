@@ -5,11 +5,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from fastmcp import Context  # noqa: TC002  # required at runtime for pydantic schema generation
-from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_request
 from godoo.client.client import OdooClient, OdooClientConfig
 from godoo.client.errors import OdooError
 
+from godoo_mcp_server.links import public_odoo_url
+from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
 from godoo_mcp_server.server import mcp
 
 if TYPE_CHECKING:
@@ -18,9 +19,11 @@ if TYPE_CHECKING:
 
 @mcp.tool(
     name="users_whoami",
+    annotations={"readOnlyHint": True},
     description=(
-        "Return the authenticated Odoo user identity (uid, username, database)."
+        "Return the authenticated Odoo user identity and configured target URL."
         " username is the Odoo login value from the X-Odoo-Username header."
+        " URL and database are connection context, not a test/production classification."
     ),
 )
 async def users_whoami(ctx: Context) -> dict[str, object]:
@@ -34,20 +37,22 @@ async def users_whoami(ctx: Context) -> dict[str, object]:
         password=creds.password,
     )
     try:
-        async with OdooClient(config) as client:
+        async with managed_odoo_client(OdooClient(config)) as client:
             session = client.get_session()
             assert session is not None
             return {
                 "uid": session.uid,
                 "username": creds.username,
                 "database": session.db,
+                "url": public_odoo_url(creds.url),
             }
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(
     name="users_search_users",
+    annotations={"readOnlyHint": True},
     description=(
         "Search Odoo users by domain filter. Returns res.users records."
         " Default fields: id, name, login, active, share."
@@ -70,7 +75,7 @@ async def users_search_users(
         password=creds.password,
     )
     try:
-        async with OdooClient(config) as client:
+        async with managed_odoo_client(OdooClient(config)) as client:
             users = await client.search_read(
                 "res.users",
                 domain or [],
@@ -80,4 +85,4 @@ async def users_search_users(
             )
             return {"users": users, "count": len(users)}
     except OdooError as e:
-        raise ToolError(str(e)) from e
+        raise safe_tool_error(e) from None

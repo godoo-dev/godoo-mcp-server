@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from typing import Any
@@ -14,6 +15,7 @@ from godoo_mcp_server.server import create_app
 
 def main() -> None:
     """Start the MCP server or print version."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     if "--version" in sys.argv:
         print(f"godoo-mcp-server {__version__}")
         sys.exit(0)

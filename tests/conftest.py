@@ -10,18 +10,17 @@ from godoo.testcontainers import TestHarness
 from httpx import ASGITransport, AsyncClient
 
 from godoo_mcp_server.server import create_app
+from tests.odoo_proof import observe, requested_major
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     import pytest
 
-    from godoo.testcontainers import StartedOdooContainer
-
 STANDARD_MCP_HEADERS: dict[str, str] = {
     "content-type": "application/json",
     "accept": "application/json, text/event-stream",
-    "mcp-protocol-version": "2024-11-05",
+    "mcp-protocol-version": "2026-07-28",
 }
 
 FAKE_CRED_HEADERS: dict[str, str] = {
@@ -33,14 +32,16 @@ FAKE_CRED_HEADERS: dict[str, str] = {
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
-async def odoo_harness() -> AsyncGenerator[StartedOdooContainer]:
-    """Session-scoped real Odoo container — starts once, shared across all tests that need Docker."""
+async def odoo_harness() -> AsyncGenerator[TestHarness]:
+    """Start one real Odoo container for tests that need Docker."""
+    major = requested_major()
     async with TestHarness(
         modules=["base", "mail"],
-        snapshot=True,
+        snapshot=False,
         database="test_odoo",
         admin_password="admin",
     ) as h:
+        await observe(h, major)
         yield h
 
 
@@ -53,7 +54,35 @@ async def _make_client(
     app = create_app()
     async with app.router.lifespan_context(app):
         transport = ASGITransport(app=app)
-        async with AsyncClient(
+
+        class MCPClient(AsyncClient):
+            async def post(self, url: str, **kwargs: object) -> object:
+                body = kwargs.get("json")
+                if isinstance(body, dict) and isinstance(body.get("method"), str):
+                    method = body["method"]
+                    params = body.setdefault("params", {})
+                    if isinstance(params, dict):
+                        params.setdefault(
+                            "_meta",
+                            {
+                                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                                "io.modelcontextprotocol/clientCapabilities": {},
+                            },
+                        )
+                    headers = dict(kwargs.pop("headers", {}) or {})
+                    headers["mcp-method"] = method
+                    if method == "tools/call" and isinstance(body.get("params"), dict):
+                        tool_name = body["params"].get("name")
+                        if isinstance(tool_name, str):
+                            headers["mcp-name"] = tool_name
+                    if method == "resources/read" and isinstance(body.get("params"), dict):
+                        resource_uri = body["params"].get("uri")
+                        if isinstance(resource_uri, str):
+                            headers["mcp-name"] = resource_uri
+                    kwargs["headers"] = headers
+                return await super().post(url, **kwargs)
+
+        async with MCPClient(
             transport=transport,
             base_url="http://test",
             headers=headers,

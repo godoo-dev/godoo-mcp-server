@@ -1,71 +1,215 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
-    branches: [develop, main]
+    branches: [main]
   pull_request:
-    branches: [develop, main]
+    branches: [main]
+  workflow_call:
+    inputs:
+      source_sha:
+        type: string
+        default: ''
+      source_ref:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: '0.12.5'
+  PYTHON_VERSION: '3.14.8'
 
 jobs:
-  ci:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
+        with:
+          just-version: '1.46.0'
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: just offline "$RUNNER_TEMP/offline"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: offline-proof
+          path: ${{ runner.temp }}/offline
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
+        with:
+          just-version: '1.46.0'
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Build and exercise one wheel in an isolated consumer
+        env:
+          SOURCE_REF: ${{ inputs.source_ref || github.ref }}
+        run: just package "$RUNNER_TEMP/candidate" "$SOURCE_REF"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-wheel
+          path: ${{ runner.temp }}/candidate
+          if-no-files-found: error
+
+  r2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
+        with:
+          just-version: '1.46.0'
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - run: just r2
+
+  image:
+    needs: package
+    runs-on: ubuntu-latest
+    outputs:
+      majors: ${{ steps.matrix.outputs.majors }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
+        with:
+          just-version: '1.46.0'
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: candidate-wheel
+          path: ${{ runner.temp }}/candidate
+      - id: matrix
+        run: echo "majors=$(just --evaluate odoo_majors | jq -Rc 'split(" ")')" >> "$GITHUB_OUTPUT"
+      - run: just image "$RUNNER_TEMP/candidate"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-image
+          path: ${{ runner.temp }}/candidate
+          if-no-files-found: error
+          retention-days: 7
+
+  odoo:
+    needs: image
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.14"]  # One-line to add 3.15+ later
-
+        major: ${{ fromJSON(needs.image.outputs.majors) }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          version: "latest"
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
         with:
-          python-version: ${{ matrix.python-version }}
+          version: ${{ env.UV_VERSION }}
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
+        with:
+          just-version: '1.46.0'
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: candidate-image
+          path: ${{ runner.temp }}/candidate
+      - name: Exercise real Odoo and the exact candidate image
+        run: just odoo "$RUNNER_TEMP/candidate" "${{ matrix.major }}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: odoo-${{ matrix.major }}-proof
+          path: ${{ runner.temp }}/candidate/odoo-${{ matrix.major }}*
+          if-no-files-found: error
+          retention-days: 7
 
-      - name: Install dependencies
-        run: uv sync --frozen --dev
-
-      - name: Lint (ruff)
-        run: |
-          uv run ruff check .
-          uv run ruff format --check .
-
-      - name: Type check (mypy)
-        run: uv run mypy --strict src/
-
-      - name: Test (pytest)
-        run: uv run pytest --tb=short
-
-  integration:
+  archive:
+    needs: [image, odoo]
     runs-on: ubuntu-latest
-    needs: ci
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          version: "latest"
-
-      - name: Set up Python 3.14
-        uses: actions/setup-python@v5
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
         with:
-          python-version: "3.14"
-
-      - name: Cache Odoo snapshots
-        uses: actions/cache@v4
+          just-version: '1.46.0'
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
-          path: ~/.cache/godoo-testcontainers
-          key: odoo-snapshot-${{ hashFiles('pyproject.toml') }}
-          restore-keys: odoo-snapshot-
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: candidate-image
+          path: ${{ runner.temp }}/candidate
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: odoo-*-proof
+          merge-multiple: true
+          path: ${{ runner.temp }}/candidate
+      - run: just archive "$RUNNER_TEMP/candidate"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tested-candidate
+          path: ${{ runner.temp }}/candidate
+          if-no-files-found: error
+          retention-days: 7
 
-      - name: Install dependencies
-        run: uv sync --frozen --dev
-
-      - name: Run integration tests
-        run: uv run pytest -m integration --tb=short
+  required:
+    name: required
+    if: ${{ always() }}
+    needs: [offline, r2, package, image, odoo, archive]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Require exactly every mandatory successful result
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: python scripts/candidate.py required
