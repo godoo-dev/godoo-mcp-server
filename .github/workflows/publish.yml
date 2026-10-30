@@ -130,6 +130,10 @@ jobs:
           import json, os, pathlib, subprocess
           directory = pathlib.Path(os.environ['RUNNER_TEMP']) / 'candidate'
           candidate = json.loads((directory / 'candidate.json').read_text())
+          # Check with the native package credential before either registry write.
+          if os.environ['REGISTRY'] == 'pypi':
+              subprocess.run(['python', 'scripts/registry_preflight.py',
+                              os.environ['GHCR_REPOSITORY'].lower(), candidate['version']], check=True)
           command = ['uv', 'publish', '--trusted-publishing', 'always']
           if os.environ['REGISTRY'] == 'testpypi':
               command += ['--index', 'testpypi']
