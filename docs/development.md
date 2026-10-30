@@ -166,6 +166,14 @@ verification and consumes that wheel and image without any rebuild. Production
 container tags use the immutable package version. TestPyPI is also publication;
 its choice does not publish a production container.
 
+Before either PyPI upload or GHCR push, the promotion job authenticates to GHCR
+using its existing workflow token and checks the exact version tag. Only an authenticated `404 MANIFEST_UNKNOWN` permits
+publication. Existing tags, denied access and unrecognized responses stop the
+job before publication. This guard does not recover partial releases: preserve
+the tested candidate and reconcile existing registry bytes before any recovery.
+The registry has no atomic create-only tag operation; this check does not exclude
+an external publisher racing the final push.
+
 PyPI/TestPyPI use protected environments and Trusted Publisher/OIDC; GHCR uses
 the workflow token only in the final promotion job. These are prepared source
 controls, not proof of a hosted run, branch/environment protection, configured
