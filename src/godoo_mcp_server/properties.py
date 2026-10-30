@@ -22,7 +22,11 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from godoo.client.client import OdooClient
-    from godoo.client.services.properties import PropertyDefinition, PropertyDefinitions
+    from godoo.client.services.properties import (
+        PropertyBinding,
+        PropertyDefinition,
+        PropertyDefinitions,
+    )
 
 
 def _invalid(message: str) -> ClassifiedToolError:
@@ -218,6 +222,57 @@ async def read(
                 )
                 row.setdefault("properties", {})[container] = projected
         return [result[rid] for rid in ids]
+
+
+async def prepare_create(
+    client: OdooClient,
+    model: str,
+    properties: dict[str, dict[str, Any]],
+    values: dict[str, Any],
+) -> tuple[PropertyBinding, dict[str, Any]]:
+    """Preflight every container, leaving one for the supplier's bound create.
+
+    The binding captures the first container's explicit parent and naming context.
+    Other containers are encoded here so all changes share its single create RPC.
+    Definitions are freshly loaded; the caller must use ``refresh=False`` to keep
+    network preflight separate from dispatch and its uncertain-outcome handling.
+    """
+    properties, values = deepcopy(properties), deepcopy(values)
+    if not properties or any(not patch for patch in properties.values()):
+        raise _invalid("Property creation requires nonempty property containers.")
+    with _errors(), client.with_context(lang="en_US"):
+        metadata = await client.fields_get(model)
+        if any(metadata.get(field, {}).get("type") == "properties" for field in values):
+            raise _invalid("Do not mix raw properties containers with friendly property changes.")
+        binding = None
+        for container, patch in properties.items():
+            info = _container(metadata, container)
+            parent_field = info.get("definition_record")
+            parent_id = values.get(parent_field) if isinstance(parent_field, str) else None
+            if type(parent_id) is not int or parent_id <= 0:
+                raise _invalid(
+                    "Supply each properties container's positive definition-parent ID in values."
+                )
+            definitions = await client.properties.definitions(
+                model, field=container, parent_id=parent_id, context={"lang": "en_US"}
+            )
+            names = _Names.build(definitions)
+            changes = patch_values(
+                (
+                    (names.definition(name).id, names.encode(name, value))
+                    for name, value in patch.items()
+                ),
+                definitions,
+            )
+            if binding is None:
+                # MCP naming permits Unicode, leading digits and Python keywords;
+                # translate to technical IDs rather than imposing Python alias rules.
+                binding = definitions.bind({})
+                values[container] = changes
+            else:
+                values[container] = encode_values(changes, definitions)
+        assert binding is not None
+        return binding, values
 
 
 async def prepare_update(

@@ -36,6 +36,6 @@ the same CC0-1.0 dedication.
 
 The friendly dynamic-properties recipe is original MCP guidance maintained against
 the discovery and record interfaces. The implementation consumes the separately
-LGPL-licensed [godoo-py properties service](https://github.com/godoo-dev/godoo-py/blob/59e838012e6da1ebb40247775c9b1c670e10386b/docs/services/properties.md);
+LGPL-licensed [godoo-py properties service](https://github.com/godoo-dev/godoo-py/blob/f7a17cfab47e992419e09e4624632c620801c274/docs/services/properties.md);
 no library implementation code is copied into this CC0 documentation bundle.
 Names, choices and parent scopes replace the earlier raw full-replacement recipe.

@@ -12,7 +12,7 @@ requires-python = ">=3.14"
 dependencies = [
     "fastmcp==4.1.4",
     "mcp==2.3.0",
-    "godoo-client @ https://github.com/godoo-dev/godoo-py/archive/59e838012e6da1ebb40247775c9b1c670e10386b.tar.gz#subdirectory=packages/godoo-client&sha256=302f40c41967e121340d5030605925cde840aa0f21e926ec42d47e96617232df",
+    "godoo-client @ https://github.com/godoo-dev/godoo-py/archive/f7a17cfab47e992419e09e4624632c620801c274.tar.gz#subdirectory=packages/godoo-client&sha256=90409c879a047e8a024f6df9f73e24b7bdc7fc08ec7d3ad48573fdf1edfe3cdf",
     "cachetools>=7,<8",
     "obstore>=0.12.1,<0.13",
     "markdown-it-py>=4,<5",

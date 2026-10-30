@@ -494,11 +494,11 @@ wheels = [
 [[package]]
 name = "godoo-client"
 version = "0.3.0"
-source = { url = "https://github.com/godoo-dev/godoo-py/archive/59e838012e6da1ebb40247775c9b1c670e10386b.tar.gz", subdirectory = "packages/godoo-client" }
+source = { url = "https://github.com/godoo-dev/godoo-py/archive/f7a17cfab47e992419e09e4624632c620801c274.tar.gz", subdirectory = "packages/godoo-client" }
 dependencies = [
     { name = "httpx" },
 ]
-sdist = { hash = "sha256:302f40c41967e121340d5030605925cde840aa0f21e926ec42d47e96617232df" }
+sdist = { hash = "sha256:90409c879a047e8a024f6df9f73e24b7bdc7fc08ec7d3ad48573fdf1edfe3cdf" }
 
 [package.metadata]
 requires-dist = [
@@ -534,7 +534,7 @@ dev = [
 requires-dist = [
     { name = "cachetools", specifier = ">=7,<8" },
     { name = "fastmcp", specifier = "==4.1.4" },
-    { name = "godoo-client", url = "https://github.com/godoo-dev/godoo-py/archive/59e838012e6da1ebb40247775c9b1c670e10386b.tar.gz", subdirectory = "packages/godoo-client" },
+    { name = "godoo-client", url = "https://github.com/godoo-dev/godoo-py/archive/f7a17cfab47e992419e09e4624632c620801c274.tar.gz", subdirectory = "packages/godoo-client" },
     { name = "markdown-it-py", specifier = ">=4,<5" },
     { name = "mcp", specifier = "==2.3.0" },
     { name = "obstore", specifier = ">=0.12.1,<0.13" },

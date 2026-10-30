@@ -16,7 +16,7 @@ from pydantic import Field, StrictInt
 from godoo_mcp_server.artifacts import deliver_record_result
 from godoo_mcp_server.links import record_web_urls
 from godoo_mcp_server.odoo_runtime import ClassifiedToolError, managed_odoo_client, safe_tool_error
-from godoo_mcp_server.properties import compile_domain, prepare_update
+from godoo_mcp_server.properties import compile_domain, prepare_create, prepare_update
 from godoo_mcp_server.properties import read as read_properties
 from godoo_mcp_server.server import mcp
 
@@ -154,23 +154,40 @@ async def record_read(
 @mcp.tool(
     name="record_create",
     annotations={"readOnlyHint": False},
-    description="Create a new record. Returns the new record id.",
+    description=(
+        "Create one record from ordinary values and optional properties, using"
+        " {container: {friendly_name: value}} and discovered friendly choices."
+        " Supply each container's positive definition-parent ID in values. Omitted"
+        " properties retain Odoo defaults; null clears. Do not mix raw containers"
+        " with friendly properties. All properties are preflighted before one create."
+        " Returns id and web_url. Never retry an unknown write automatically."
+    ),
 )
 async def record_create(
     ctx: Context,
     model: str,
     values: dict[str, Any],
+    properties: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, object]:
     """Create a new record with the given field values."""
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
         async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
-            new_id = await client.create(model, values)
+            if properties is not None:
+                binding, payload = await prepare_create(client, model, properties, values)
+            try:
+                new_id = (
+                    await binding.create(payload, refresh=False)
+                    if properties is not None
+                    else await client.create(model, values)
+                )
+            except OdooError as e:
+                raise safe_tool_error(e, write_may_have_dispatched=True) from None
             urls = record_web_urls(creds.url, model, [new_id])
             return {"id": new_id, "web_url": urls.get(str(new_id))}
     except OdooError as e:
-        raise safe_tool_error(e, write_may_have_dispatched=True) from None
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(
