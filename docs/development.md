@@ -145,8 +145,8 @@ later promotion. `scripts/candidate.py` retains substantive identity, archive an
 proof validation; `scripts/http_probe.py` and `installed_probe.py` drive real
 protocol/package checks. Command orchestration lives in `justfile`.
 
-The [CI workflow](../.github/workflows/ci.yml) runs on all develop/main PRs and
-pushes, plus manual/reusable invocations. Its stable `required` aggregate rejects
+The [CI workflow](../.github/workflows/ci.yml) runs on all PRs targeting main and
+pushes to main, plus manual/reusable invocations. Its stable `required` aggregate rejects
 anything except success from exactly `offline`, `r2`, `package`, `image`, `odoo` and `archive`.
 All installs/checks are frozen. Candidate reports keep source, patch/untracked
 identity, version, lock/tool identities and hashes. Local dirty checks are valid
@@ -186,3 +186,26 @@ No registry publication is part of this change.
 The integration harness installs `base,mail,project` to qualify parent-specific
 task properties; the image harness retains `base,mail`. Candidate facts validate
 those distinct module sets and actual observed Odoo majors.
+
+## Integration branch and release finish
+
+`main` is the sole long-lived integration and release branch. Start temporary
+feature branches from current `origin/main` and target their pull requests at
+`main`. Dependabot follows the repository default branch. Publication remains a
+separate, explicitly authorized manual operation using the exact candidate gates
+above; a merge, branch change or cleanup does not authorize a release.
+
+At the finish of an authorized release, assess retained worktrees and local/remote
+branches against the released commit and current main. Inspect each checkout's
+tracked and untracked changes, ancestry and patch equivalence, linked thread
+activity/pins, process references and container mounts. Keep primary, active,
+pinned, in-use and ambiguous worktrees, unique or unmerged work, tags and required
+release evidence. A failed ownership/status check means unknown.
+
+When cleanup is authorized and a disposable checkout is demonstrably clean,
+completed, integrated and unused, remove it with `git worktree remove` without
+force. Delete its branch only when that branch's retirement is also authorized
+and integration is established; retain unresolved refs and unique work for later
+review. Never delete main. Read back remaining local/remote refs and worktree
+registrations, and report actual removals and preserved work. This is a
+release-finish assessment, not automatic deletion on every release.

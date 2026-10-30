@@ -99,7 +99,7 @@ failure. Preserve failed evidence. Do not weaken expected behavior to pass.
 
 ## CI and promotion
 
-`.github/workflows/ci.yml` is both authoritative PR/push validation on develop/main
+`.github/workflows/ci.yml` validates all PRs targeting main and pushes to main
 (no path filter) and the release workflow's same-run reusable validator. Job
 `required` runs always and requires `offline,r2,package,image,odoo,archive`, each
 success. The Odoo matrix reads `odoo_majors` from `justfile` (currently18 and19);
