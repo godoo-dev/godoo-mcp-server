@@ -123,6 +123,11 @@ Raw property containers cannot be mixed with friendly creation. Creation remains
 single-record and returns the existing `id` and `web_url` envelope. A lost create
 reply must never be retried automatically; inspect actual Odoo state first.
 Definitions can change after preflight; creation is not an atomic schema snapshot.
+On Odoo 19, a subsequent friendly read can fail if other properties are unset
+without defaults; the current client rejects omitted `value` entries
+([issue #32](https://github.com/godoo-dev/godoo-mcp-server/issues/32)). Verify with
+raw `record_read(fields=["task_properties"])` in that case, using the actual
+container field. A failed read does not mean creation failed; do not recreate it.
 
 ```json
 {"model":"project.task","ids":[42],"properties":{"task_properties":{"priority":"normal","estimated_effort":null}}}

@@ -208,18 +208,34 @@ async def test_sdk_friendly_create_and_independent_readback(
                     },
                 )
             ).structured_content
-            row = (
+            # Independently verify sparse create effects. Odoo19 can omit value
+            # for untouched properties; the supplier's friendly-read limitation
+            # is tracked separately in #32. Full friendly readback is above.
+            raw = (await client.read("project.task", result["id"], ["task_properties"]))[0]
+            public_raw = (
                 await sdk.call_tool(
                     "record_read",
                     {
                         "model": "project.task",
                         "ids": [result["id"]],
-                        "fields": ["properties.task_properties"],
+                        "fields": ["task_properties"],
                         "max_return_bytes": None,
                     },
                 )
-            ).structured_content["records"][0]["properties"]["task_properties"]
-            assert {name: row[name] for name in expected_defaults} == expected_defaults
+            ).structured_content["records"][0]
+            assert public_raw == raw
+            stored = {entry["name"]: entry.get("value") for entry in raw["task_properties"]}
+            for name, expected_value in expected_defaults.items():
+                field_key = "effort" if name == "estimated_effort" else name
+                actual = stored[keys[field_key]]
+                if isinstance(expected_value, list):
+                    assert (actual if actual is not False else []) == expected_value
+                elif expected_value is None:
+                    assert actual is False or actual is None
+                elif name == "priority":
+                    assert actual == keys[expected_value]
+                else:
+                    assert actual == expected_value
 
         rejected_marker = f"Rejected create {uuid.uuid4().hex}"
         for ordinary, changes in (

@@ -86,6 +86,13 @@ record and returns `id` and `web_url`; use that ID to read back the intended fie
 Definitions can change after preflight. A denied call stops, and a lost create
 reply requires independent state inspection before any retry to avoid duplicates.
 
+On Odoo 19, friendly readback can fail when other properties are unset without
+defaults because the current client rejects omitted `value` entries. In that case,
+use `record_read` with the raw container field (for example, `fields=["task_properties"]`)
+and inspect the returned values. A read error does not mean creation failed; never
+repeat creation to repair a failed read. This limitation is tracked in
+[issue #32](https://github.com/godoo-dev/godoo-mcp-server/issues/32).
+
 ## Search using the same vocabulary
 
 Constrain the query to one definition parent and use friendly paths in the domain:
