@@ -11,11 +11,13 @@ from fastmcp import Context  # noqa: TC002
 from fastmcp.server.dependencies import get_http_request
 from godoo.client.client import OdooClient, OdooClientConfig
 from godoo.client.errors import OdooError
-from pydantic import Field
+from pydantic import Field, StrictInt
 
 from godoo_mcp_server.artifacts import deliver_record_result
 from godoo_mcp_server.links import record_web_urls
-from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
+from godoo_mcp_server.odoo_runtime import ClassifiedToolError, managed_odoo_client, safe_tool_error
+from godoo_mcp_server.properties import compile_domain, prepare_update
+from godoo_mcp_server.properties import read as read_properties
 from godoo_mcp_server.server import mcp
 
 if TYPE_CHECKING:
@@ -45,6 +47,9 @@ def _make_config(creds: OdooCredentials) -> OdooClientConfig:
         " private JSON artifact receipt with a signed URL (default 60 minutes)."
         " Set 0 to force artifact delivery, null to return the full result inline."
         " Odoo is only read; artifact delivery creates a temporary stored copy."
+        " Select friendly properties with fields such as properties.task_properties.priority."
+        " The same path and friendly choices work in domain predicates constrained to one"
+        " definition parent. Property filtering happens before pagination."
     ),
 )
 async def record_search(
@@ -57,19 +62,31 @@ async def record_search(
     order: str | None = None,
     max_return_bytes: ReturnByteLimit | None = 500,
 ) -> dict[str, object]:
-    """Search records using search_read (one-shot: search + read in a single RPC call)."""
+    """Search records, then resolve explicitly selected friendly property values."""
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
         async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
+            if order and any(part.strip().startswith("properties.") for part in order.split(",")):
+                raise ClassifiedToolError(
+                    "Ordering by friendly properties is unsupported", category="property_order"
+                )
+            friendly_fields = fields is not None and any(
+                name.startswith("properties.") for name in fields
+            )
+            compiled = await compile_domain(client, model, domain or [])
             records = await client.search_read(
                 model,
-                domain or [],
-                fields=fields,
+                compiled,
+                fields=["id"] if friendly_fields else fields,
                 limit=limit,
                 offset=offset,
                 order=order,
             )
+            if friendly_fields and fields is not None:
+                records = await read_properties(
+                    client, model, [row["id"] for row in records], fields
+                )
             result: dict[str, object] = {
                 "records": records,
                 "count": len(records),
@@ -97,6 +114,8 @@ async def record_search(
         " with a signed URL (default 60 minutes). Set 0 to force artifact delivery,"
         " null to return the full result inline. Odoo is only read; artifact delivery"
         " creates a temporary stored copy."
+        " Select properties.<container> or properties.<container>.<name> for friendly"
+        " names and choice values discovered through discovery_get_fields."
     ),
 )
 async def record_read(
@@ -111,7 +130,10 @@ async def record_read(
     creds: OdooCredentials = request.state.odoo_creds
     try:
         async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
-            records = await client.read(model, ids, fields)
+            if fields is not None and any(name.startswith("properties.") for name in fields):
+                records = await read_properties(client, model, ids, fields)
+            else:
+                records = await client.read(model, ids, fields)
             result: dict[str, object] = {
                 "records": records,
                 "web_urls": record_web_urls(
@@ -154,26 +176,48 @@ async def record_create(
 @mcp.tool(
     name="record_update",
     annotations={"readOnlyHint": False},
-    description="Update fields on existing records by id list.",
+    description=(
+        "Update ordinary fields through values. For one record, properties accepts"
+        " {container: {friendly_name: value}} sparse changes using discovered names and"
+        " choices. Omitted properties remain unchanged; null clears. Lists replace that"
+        " property's selected values. Mixed values/properties use one write. Read/merge/write"
+        " is non-atomic against concurrent edits. Never retry an unknown write automatically."
+    ),
 )
 async def record_update(
     ctx: Context,
     model: str,
-    ids: list[int],
-    values: dict[str, Any],
+    ids: list[StrictInt],
+    values: dict[str, Any] | None = None,
+    properties: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, object]:
     """Update records using client.write (maps record_update -> write per D-03)."""
     request = get_http_request()
     creds: OdooCredentials = request.state.odoo_creds
     try:
         async with managed_odoo_client(OdooClient(_make_config(creds))) as client:
-            ok = await client.write(model, ids, values)
+            payload = values or {}
+            if properties is not None:
+                if len(ids) != 1 or type(ids[0]) is not int or ids[0] <= 0:
+                    raise ClassifiedToolError(
+                        "Property updates require exactly one positive record ID",
+                        category="property_scope",
+                    )
+                payload = await prepare_update(client, model, ids[0], properties, values or {})
+            elif values is None:
+                raise ClassifiedToolError(
+                    "Supply values or properties to update", category="update_values"
+                )
+            try:
+                ok = await client.write(model, ids, payload)
+            except OdooError as e:
+                raise safe_tool_error(e, write_may_have_dispatched=True) from None
             return {
                 "success": ok,
                 "web_urls": record_web_urls(creds.url, model, ids) if ok else {},
             }
     except OdooError as e:
-        raise safe_tool_error(e, write_may_have_dispatched=True) from None
+        raise safe_tool_error(e) from None
 
 
 @mcp.tool(

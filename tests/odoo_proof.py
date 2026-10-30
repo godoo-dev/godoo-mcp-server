@@ -49,7 +49,7 @@ async def observe(harness: Any, major: int) -> None:
     record = {
         "requested_major": major,
         "observed_major": observed,
-        "modules": ["base", "mail"],
+        "modules": harness._modules,
         "containers": rows,
         "network_id": started._network.id,
     }

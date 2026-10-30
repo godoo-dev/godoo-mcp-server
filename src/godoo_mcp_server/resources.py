@@ -42,7 +42,8 @@ _SKILL_TOPICS = {
         "Record changes", "CRUD, relation commands and readback."
     ),
     "base/dynamic-properties.md": GuidanceTopic(
-        "Dynamic properties", "Replacement semantics and concurrency limits for property values."
+        "Dynamic properties",
+        "Discover, read, patch and search friendly property names and choices.",
     ),
     "mail/chatter.md": GuidanceTopic(
         "Chatter", "Messages, internal notes, recipients and mentions."

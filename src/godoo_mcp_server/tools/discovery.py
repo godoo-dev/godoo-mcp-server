@@ -8,8 +8,10 @@ from fastmcp import Context  # noqa: TC002
 from fastmcp.server.dependencies import get_http_request
 from godoo.client.client import OdooClient, OdooClientConfig
 from godoo.client.errors import OdooError
+from pydantic import StrictInt  # noqa: TC002
 
 from godoo_mcp_server.odoo_runtime import managed_odoo_client, safe_tool_error
+from godoo_mcp_server.properties import discover as discover_properties
 from godoo_mcp_server.server import mcp
 
 if TYPE_CHECKING:
@@ -62,13 +64,18 @@ async def discovery_list_models(ctx: Context) -> dict[str, object]:
     annotations={"readOnlyHint": True},
     description=(
         "Return field metadata for an Odoo model. Includes type, label, required,"
-        " readonly, help text, and relational target model."
+        " readonly, help text, and relational target model. Pass record_id for friendly"
+        " property names and allowed choices, or property_field + parent_id before a"
+        " child record exists. Properties are scoped to their definition parent."
     ),
 )
 async def discovery_get_fields(
     ctx: Context,
     model: str,
     attributes: list[str] | None = None,
+    record_id: StrictInt | None = None,
+    property_field: str | None = None,
+    parent_id: StrictInt | None = None,
 ) -> dict[str, object]:
     """Return field metadata for the given Odoo model."""
     request = get_http_request()
@@ -85,7 +92,16 @@ async def discovery_get_fields(
                 model,
                 attributes=attributes or _DEFAULT_FIELD_ATTRS,
             )
-            return {"model": model, "fields": fields}
+            result: dict[str, object] = {"model": model, "fields": fields}
+            if record_id is not None or property_field is not None or parent_id is not None:
+                result["properties"] = await discover_properties(
+                    client,
+                    model,
+                    record_id=record_id,
+                    property_field=property_field,
+                    parent_id=parent_id,
+                )
+            return result
     except OdooError as e:
         raise safe_tool_error(e) from None
 

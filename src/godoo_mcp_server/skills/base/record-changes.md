@@ -7,6 +7,9 @@ is not a reason to ask again, and generic guidance does not authorize extra writ
 - `record_create(model, values)` returns `id` and `web_url`.
 - `record_update(model, ids, values)` writes the same values to every listed ID and
   returns `success` and `web_urls`.
+- For one record, `record_update` also accepts `properties={container:{name:value}}`
+  using discovered friendly names. This is a sparse change, not a full replacement.
+  Ordinary `values` can accompany it in one write; see [dynamic properties](dynamic-properties.md).
 - `record_delete(model, ids)` deletes records and returns `success`.
 
 Use a list of numeric IDs for read/update/delete, even for one record. A successful

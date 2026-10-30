@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.14"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -494,13 +494,18 @@ wheels = [
 [[package]]
 name = "godoo-client"
 version = "0.3.0"
-source = { registry = "https://pypi.org/simple" }
+source = { url = "https://github.com/godoo-dev/godoo-py/archive/59e838012e6da1ebb40247775c9b1c670e10386b.tar.gz", subdirectory = "packages/godoo-client" }
 dependencies = [
     { name = "httpx" },
 ]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fa/d3/285e6dd7417db132d0df857b5faac093940fe853b2adf83a4a24fdd2878a/godoo_client-0.3.0-py3-none-any.whl", hash = "sha256:5d2a5166e18e46e2e67826c506daa20676dd172238ea6640ca64606c9a7d8bc6", size = 48551, upload-time = "2026-10-25T21:27:08.696Z" },
+sdist = { hash = "sha256:302f40c41967e121340d5030605925cde840aa0f21e926ec42d47e96617232df" }
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pydantic", marker = "extra == 'typed'", specifier = ">=2.13" },
 ]
+provides-extras = ["typed"]
 
 [[package]]
 name = "godoo-mcp-server"
@@ -529,7 +534,7 @@ dev = [
 requires-dist = [
     { name = "cachetools", specifier = ">=7,<8" },
     { name = "fastmcp", specifier = "==4.1.4" },
-    { name = "godoo-client", specifier = ">=0.2,<0.4" },
+    { name = "godoo-client", url = "https://github.com/godoo-dev/godoo-py/archive/59e838012e6da1ebb40247775c9b1c670e10386b.tar.gz", subdirectory = "packages/godoo-client" },
     { name = "markdown-it-py", specifier = ">=4,<5" },
     { name = "mcp", specifier = "==2.3.0" },
     { name = "obstore", specifier = ">=0.12.1,<0.13" },

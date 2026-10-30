@@ -71,7 +71,8 @@ commands remain available; they do not replace the required check family.
 
 Only use owned disposable Docker resources. `tests/odoo_proof.py` selects the requested major
 explicitly and queries `common.version`; never trust an image tag as an observation.
-Both required harnesses install `base,mail` without shared snapshots and record
+The integration harness installs `base,mail,project`; the image harness installs
+`base,mail`. Both run without shared snapshots and record
 actual Odoo/Postgres container IDs, image IDs/digests and network IDs in
 `odoo-<major>-facts.jsonl`. Distinct containers isolate each `test_odoo` database.
 The required check clears ambient Odoo/seed credentials and runs suites serially.

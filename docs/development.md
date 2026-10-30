@@ -116,6 +116,7 @@ Under `src/godoo_mcp_server/`:
 | `credentials.py` | Header/environment resolution and request-scoped credential state |
 | `odoo_runtime.py` | Bounded client cleanup and safe public errors |
 | `tools/` | Odoo calls and result envelopes |
+| `properties.py` | Request-local friendly property names, projections, sparse write preparation and scoped domains |
 | `resources.py`, `catalog.py` | Bundled guidance and target/user-scoped model catalog |
 | `links.py` | Odoo browser links added to record results |
 | `artifacts.py` | Byte-limited record delivery, private R2/S3/GCS JSON artifacts and timed cleanup |
@@ -170,3 +171,18 @@ the workflow token only in the final promotion job. These are prepared source
 controls, not proof of a hosted run, branch/environment protection, configured
 Trusted Publisher or registry acceptance. This work does not authorize publishing,
 credentials, deployment or remote settings changes.
+
+## Properties client source dependency
+
+The friendly properties adapter consumes godoo-py PR #10 from its immutable
+`59e838012e6da1ebb40247775c9b1c670e10386b` archive with a SHA-256 pin.
+The released `godoo-client 0.3.0` predates that API. Frozen exports retain the
+archive hash, allowing the native hash-required installed-wheel and image checks
+to consume the same source without Git. This direct dependency is temporary:
+PyPI does not accept direct URL dependencies, so a registry publication first
+needs a client release containing PR #10 and a corresponding specifier/lock update.
+No registry publication is part of this change.
+
+The integration harness installs `base,mail,project` to qualify parent-specific
+task properties; the image harness retains `base,mail`. Candidate facts validate
+those distinct module sets and actual observed Odoo majors.

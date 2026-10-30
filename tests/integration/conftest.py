@@ -132,7 +132,7 @@ async def odoo_harness() -> AsyncGenerator[TestHarness]:
     """Use the selected disposable Odoo major, regardless of library defaults."""
     major = requested_major()
     async with TestHarness(
-        modules=["base", "mail"],
+        modules=["base", "mail", "project"],
         snapshot=False,
         database="test_odoo",
         admin_password="admin",

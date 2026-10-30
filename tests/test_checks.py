@@ -166,11 +166,10 @@ def test_candidate_rejects_image_archive_and_major(packed_candidate):
     image.write_bytes(b"tested-image-archive")
     facts = directory / "facts.jsonl"
     facts.write_text(
-        (
-            json.dumps({"requested_major": 18, "observed_major": 18, "modules": ["base", "mail"]})
-            + "\n"
+        "".join(
+            json.dumps({"requested_major": 18, "observed_major": 18, "modules": modules}) + "\n"
+            for modules in (["base", "mail", "project"], ["base", "mail"])
         )
-        * 2
     )
     report = directory / "proof.xml"
     report.write_text('<testsuite tests="1"><testcase name="public-proof"/></testsuite>')

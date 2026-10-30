@@ -31,7 +31,7 @@ An unknown tool path raises `ToolError`.
 | `attachments_upload` | `name`, `content_base64`, `res_model`, `res_id`, `mimetype=None` | `id` |
 | `attachments_download` | `attachment_id` | private binary artifact receipt with `id`, `name`, `mimetype`, `size_bytes`, `sha256`, `download_url` and expiry/cleanup metadata; or `error` |
 | `discovery_list_models` | none | `models` |
-| `discovery_get_fields` | `model`, `attributes=None` | `model`, `fields` |
+| `discovery_get_fields` | `model`, `attributes=None`, `record_id=None`, `property_field=None`, `parent_id=None` | `model`, `fields`; optional friendly `properties` |
 | `discovery_list_menus` | `domain=None`, `limit=80` | `menus`, `count` |
 | `mail_post_message` | `model`, `res_id`, `body`, `is_internal=False`, `partner_ids=None`, `attachment_ids=None`, `body_format="md"` | `message_id` |
 | `mail_log_note` | `model`, `res_id`, `body`, `body_format="md"` | `message_id` |
@@ -42,14 +42,14 @@ An unknown tool path raises `ToolError`.
 | `record_search` | `model`, `domain=None`, `fields=None`, `limit=80`, `offset=0`, `order=None`, `max_return_bytes=500` | `records`, `count`, `web_urls`; or artifact receipt |
 | `record_read` | `model`, `ids`, `fields=None`, `max_return_bytes=500` | `records`, `web_urls`; or artifact receipt |
 | `record_create` | `model`, `values` | `id`, `web_url` |
-| `record_update` | `model`, `ids`, `values` | `success`, `web_urls` |
+| `record_update` | `model`, `ids`, `values=None`, `properties=None` | `success`, `web_urls` |
 | `record_delete` | `model`, `ids` | `success` |
 | `users_whoami` | none | `uid`, `username`, `database`, `url` |
 | `users_search_users` | `domain=None`, `fields=None`, `limit=80`, `offset=0` | `users`, `count` |
 
 Record search/read result objects (inline or downloaded) and update results add
 `web_urls`, keyed by record ID; create adds
-`web_url`. Raw Odoo record fields are unchanged. Links use the configured Odoo base
+`web_url`. Raw Odoo record fields are unchanged outside the explicit `properties.` projection. Links use the configured Odoo base
 URL, need browser access and do not guarantee a standalone form. Delete has no link.
 `users_whoami.url` omits userinfo, query and fragment; it does not classify the
 instance as test or production.
@@ -83,6 +83,64 @@ arguments for `discovery_get_fields` and `record_search`, respectively:
 
 These are argument examples, not an observed Odoo transcript. Discover actual
 models/fields and review requested effects before invoking mutation tools.
+
+## Friendly dynamic properties
+
+Property definitions depend on a record's parent. Discover them with
+`discovery_get_fields(model="project.task", record_id=42)`, or before a task exists
+with `property_field="task_properties", parent_id=7`. The response adds
+`properties`, keyed by container field, with ordered definitions containing
+`name`, `label`, `type`, optional `comodel`, and selection/tag `values` as
+`{"name":"high","label":"High"}` choices. Separators are omitted.
+
+Use the same friendly names in reads, changes and search domains. These are
+illustrative arguments; IDs refer to ordinary records, never property definitions:
+
+```json
+{"model":"project.task","ids":[42],"fields":["name","properties.task_properties"],"max_return_bytes":null}
+```
+
+Each result record contains `properties.task_properties`, for example
+`{"priority":"high","estimated_effort":3.5,"channels":["email"]}`. A field path
+such as `properties.task_properties.priority` selects one value. Search results
+and downloaded artifacts have the same projection. Calls without a `properties.`
+field path retain their raw representation.
+
+```json
+{"model":"project.task","ids":[42],"properties":{"task_properties":{"priority":"normal","estimated_effort":null}}}
+```
+
+`record_update` accepts this `properties` argument alongside optional ordinary
+`values`. Supplied property keys are sparse changes; omitted keys remain unchanged,
+`null` clears, valid false/zero/empty values are preserved, and tag/relation lists
+replace that property's list. Property changes initially require exactly one
+record and a nonempty change set. Mixed ordinary/property changes must produce one
+Odoo write; changing the definition parent in the same call is rejected. No
+automatic uncertain-write retry or atomic read/merge guarantee is provided.
+
+```json
+{"model":"project.task","domain":[["project_id","=",7],["properties.task_properties.priority","=","high"]],"fields":["name","properties.task_properties.priority"],"limit":20,"max_return_bytes":null}
+```
+
+Friendly predicates require a plain conjunction of leaves and one positive parent
+equality for each property container. OR/NOT domains are unsupported. MCP resolves
+names and option values, then compiles native Odoo
+predicates before ordering, offset and limit. Unsupported operators, property
+ordering and ambiguous scopes fail rather than filtering a returned page.
+`count` remains the returned page length.
+
+Boolean predicates support `=` and `!=`; numbers, dates and datetimes also support
+comparisons. Text supports equality and `ilike`/`not ilike`. Selections and many2one
+support equality and `in`/`not in`. Tags and many2many predicates are unsupported
+because native array semantics differ between Odoo versions.
+
+Names derive from labels using Unicode normalization, case folding and underscores
+for punctuation/whitespace. They are scoped to a parent/container, and choices to
+their property. Calls use the `en_US` naming context. Renames require rediscovery;
+there is no persistent alias registry. Unknown or ambiguous names fail with friendly
+diagnostics rather than exposing Odoo's opaque property/option IDs. Readable children
+do not grant access to their definition parent. Read/merge/write cannot preserve
+hidden stored keys or prevent concurrent lost updates and moves after preflight.
 
 ## Private result delivery
 
