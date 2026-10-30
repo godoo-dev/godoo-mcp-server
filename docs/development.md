@@ -172,16 +172,13 @@ controls, not proof of a hosted run, branch/environment protection, configured
 Trusted Publisher or registry acceptance. This work does not authorize publishing,
 credentials, deployment or remote settings changes.
 
-## Properties client source dependency
+## Properties client dependency
 
-The friendly properties adapter consumes godoo-py PRs #10 and #12 from the immutable
-`f7a17cfab47e992419e09e4624632c620801c274` archive with a SHA-256 pin.
-The released `godoo-client 0.3.0` predates that API. Frozen exports retain the
-archive hash, allowing the native hash-required installed-wheel and image checks
-to consume the same source without Git. This direct dependency is temporary:
-PyPI does not accept direct URL dependencies, so a registry publication first
-needs a client release containing both PRs and a corresponding specifier/lock update.
-No registry publication is part of this change.
+The friendly properties adapter consumes production PyPI `godoo-client==0.4.0`.
+The committed lock and frozen exports retain the registry wheel hash, so installed
+wheel and image checks consume the published supplier release. The earlier
+immutable source archive dependency has been replaced; the package metadata no
+longer needs a direct URL dependency.
 
 Friendly creation preflights all supplied containers with the client's shared
 codecs, then uses `PropertyBinding.create(refresh=False)` for one create RPC.
