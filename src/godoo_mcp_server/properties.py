@@ -14,8 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from godoo.client.errors import OdooError, OdooValidationError
-from godoo.client.services.properties import properties_to_write_format
-from godoo.client.services.properties.codec import patch_values
+from godoo.client.services.properties.codec import encode_values, patch_values
 
 from godoo_mcp_server.odoo_runtime import ClassifiedToolError, safe_tool_error
 
@@ -221,24 +220,6 @@ async def read(
         return [result[rid] for rid in ids]
 
 
-def _entry(definition: PropertyDefinition, value: Any) -> dict[str, Any]:
-    entry = {
-        "name": definition.id,
-        "string": definition.label,
-        "type": definition.type,
-        "comodel": definition.comodel,
-        "value": value,
-    }
-    if definition.type in ("selection", "tags"):
-        entry[definition.type] = [
-            [option.id, option.label, option.color]
-            if definition.type == "tags"
-            else [option.id, option.label]
-            for option in definition.options.values()
-        ]
-    return entry
-
-
 async def prepare_update(
     client: OdooClient,
     model: str,
@@ -278,7 +259,7 @@ async def prepare_update(
                 )
         if any(metadata.get(field, {}).get("type") == "properties" for field in values):
             raise _invalid("Do not mix raw properties containers with friendly property changes.")
-        result = dict(values)
+        result = values
         for container, patch in properties.items():
             record = await client.properties.read(
                 model, record_id, field=container, fields=[], context={"lang": "en_US"}
@@ -294,12 +275,7 @@ async def prepare_update(
                     record.property_definitions,
                 )
             )
-            result[container] = properties_to_write_format(
-                [
-                    _entry(definition, current[definition.id])
-                    for definition in names.definitions.values()
-                ]
-            )
+            result[container] = encode_values(current, record.property_definitions)
         return result
 
 
@@ -334,7 +310,7 @@ def _predicate(names: _Names, name: str, operator: str, value: Any) -> Any:
         raise _invalid("Null is only supported with = or != for properties.")
     encoded = names.encode(name, value)
     validated = patch_values([(definition.id, encoded)], {definition.id: definition})
-    return properties_to_write_format([_entry(definition, validated[definition.id])])[definition.id]
+    return encode_values(validated, {definition.id: definition})[definition.id]
 
 
 async def compile_domain(client: OdooClient, model: str, domain: list[Any]) -> list[Any]:

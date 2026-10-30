@@ -25,7 +25,7 @@ def definition(name: str, label: str, kind: str, **extra: Any) -> dict[str, Any]
 
 
 class MemoryTransport:
-    """Only RPC is simulated: metadata discovery, normalization and encoding are real."""
+    """Read-only RPC double; unexpected calls, including writes, fail every test."""
 
     def __init__(self) -> None:
         self.session = OdooSessionInfo(uid=2, session_id="test-session", db="test")
@@ -163,10 +163,6 @@ def client(transport: MemoryTransport) -> OdooClient:
     )
 
 
-def no_writes(transport: MemoryTransport) -> None:
-    assert all(call[1] in ("fields_get", "read") for call in transport.calls)
-
-
 def no_opaque(value: Any) -> None:
     assert not any(token in json.dumps(value, ensure_ascii=False) for token in OPAQUE)
     assert "f001f00d" not in json.dumps(value)
@@ -191,7 +187,6 @@ async def test_discovery_definitions_and_fixed_context(client, transport):
         for call in transport.calls
     )
     no_opaque(result)
-    no_writes(transport)
 
 
 async def test_explicit_parent_discovery_needs_no_child(client, transport):
@@ -277,7 +272,6 @@ async def test_read_multiple_parents_and_containers_without_internal_fields(clie
         },
     ]
     no_opaque(result)
-    no_writes(transport)
 
 
 async def test_selective_projection(client):
@@ -333,26 +327,20 @@ async def test_sparse_update_complete_wire_payload_and_no_write(client, transpor
         "other_properties": {"f007f00d": 12},
     }
     assert properties == expected_input and values == {"name": "Changed"}
-    no_writes(transport)
 
 
-@pytest.mark.parametrize(
-    ("name", "value", "wire"),
-    [
-        ("enabled", False, False),
-        ("estimated_effort", 0, 0),
-        ("notes", "", ""),
-        ("channels", ["phone"], ["f004f00d"]),
-        ("channels", None, []),
-        ("priority", None, False),
-        ("enabled", None, False),
-    ],
-)
-async def test_valid_false_zero_empty_and_clears(client, transport, name, value, wire):
-    result = await prepare_update(client, MODEL, 42, {CONTAINER: {name: value}}, {})
-    positions = {"priority": 0, "estimated_effort": 1, "channels": 2, "enabled": 3, "notes": 4}
-    assert result[CONTAINER][OPAQUE[positions[name]]] == wire
-    no_writes(transport)
+async def test_valid_false_zero_empty_and_clears(client, transport):
+    transport.rows[42][CONTAINER] = transport.entries(
+        7, ["f001f00d", 3.5, ["f003f00d"], True, "Before"]
+    )
+    patch = {"enabled": False, "estimated_effort": 0, "notes": "", "channels": ["phone"]}
+    result = await prepare_update(client, MODEL, 42, {CONTAINER: patch}, {})
+    assert result[CONTAINER] == dict(
+        zip(OPAQUE, ["f001f00d", 0, ["f004f00d"], False, ""], strict=True)
+    )
+    clears = {"channels": None, "priority": None, "enabled": None}
+    result = await prepare_update(client, MODEL, 42, {CONTAINER: clears}, {})
+    assert result[CONTAINER] == dict(zip(OPAQUE, [False, 3.5, [], False, "Before"], strict=True))
 
 
 @pytest.mark.parametrize(
@@ -366,6 +354,8 @@ async def test_valid_false_zero_empty_and_clears(client, transport, name, value,
         ("priority", "f001f00d"),
         ("channels", "phone"),
         ("channels", ["f003f00d"]),
+        ("channels", ["E-mail"]),
+        ("channels", ["EMAIL"]),
         ("enabled", 0),
         ("priority", []),
         ("f001f00d", "high"),
@@ -375,7 +365,6 @@ async def test_bad_patches_fail_without_write_or_opaque_error(client, transport,
     with pytest.raises(ClassifiedToolError) as error:
         await prepare_update(client, MODEL, 42, {CONTAINER: {name: value}}, {})
     no_opaque(str(error.value))
-    no_writes(transport)
 
 
 @pytest.mark.parametrize("properties", [{}, {CONTAINER: {}}, {CONTAINER: []}])
@@ -391,7 +380,6 @@ async def test_empty_or_malformed_patch_fails_before_rpc(client, transport, prop
 async def test_parent_change_and_raw_mixed_changes_rejected(client, transport, values):
     with pytest.raises(ClassifiedToolError):
         await prepare_update(client, MODEL, 42, {CONTAINER: {"priority": "normal"}}, values)
-    no_writes(transport)
     assert all(call[1] != "read" for call in transport.calls)
 
 
@@ -412,28 +400,36 @@ async def test_malformed_untouched_values_rejected(client, transport, corruption
         await prepare_update(client, MODEL, 42, {CONTAINER: {"notes": "Changed"}}, {})
     no_opaque(str(error.value))
     assert "unexpected-opaque-option" not in str(error.value)
-    no_writes(transport)
 
 
-@pytest.mark.parametrize("operation", ["discover", "read", "update", "search"])
-async def test_parent_acl_enforced_and_sanitized(client, transport, operation):
-    transport.denied.add("test.parent")
-    with pytest.raises(ClassifiedToolError, match="Odoo access denied") as error:
-        if operation == "discover":
-            await discover(client, MODEL, property_field=CONTAINER, parent_id=7)
-        elif operation == "read":
-            await read(client, MODEL, [42], [f"properties.{CONTAINER}"])
-        elif operation == "update":
-            await prepare_update(client, MODEL, 42, {CONTAINER: {"priority": "normal"}}, {})
-        else:
-            await compile_domain(
-                client,
-                MODEL,
-                [["project_id", "=", 7], [f"properties.{CONTAINER}.priority", "=", "high"]],
-            )
-    assert error.value.category == "access_denied"
+@pytest.mark.parametrize(
+    ("operation", "arguments"),
+    [
+        (discover, {"property_field": CONTAINER, "parent_id": 7}),
+        (read, {"ids": [42], "fields": [f"properties.{CONTAINER}"]}),
+        (
+            prepare_update,
+            {"record_id": 42, "properties": {CONTAINER: {"notes": "X"}}, "values": {}},
+        ),
+        (
+            compile_domain,
+            {"domain": [["project_id", "=", 7], [f"properties.{CONTAINER}.priority", "=", "high"]]},
+        ),
+    ],
+    ids=["discover", "read", "update", "search"],
+)
+@pytest.mark.parametrize("failure", ["access", "metadata"])
+async def test_definition_failures_are_sanitized(client, transport, operation, arguments, failure):
+    if failure == "access":
+        transport.denied.add("test.parent")
+        message, category = "Odoo access denied", "access_denied"
+    else:
+        del transport.metadata[CONTAINER]["definition_record_field"]
+        message, category = "rediscover", "invalid_properties"
+    with pytest.raises(ClassifiedToolError, match=message) as error:
+        await operation(client, MODEL, **arguments)
+    assert error.value.category == category
     no_opaque(str(error.value))
-    no_writes(transport)
 
 
 async def test_compile_native_domains_and_choices_before_pagination(client, transport):
@@ -454,7 +450,6 @@ async def test_compile_native_domains_and_choices_before_pagination(client, tran
     ]
     assert domain == before
     assert all(call[0] != MODEL or call[1] != "read" for call in transport.calls)
-    no_writes(transport)
 
 
 @pytest.mark.parametrize(
@@ -473,7 +468,6 @@ async def test_missing_or_ambiguous_scope(client, transport, scope):
         await compile_domain(
             client, MODEL, [*scope, [f"properties.{CONTAINER}.priority", "=", "high"]]
         )
-    no_writes(transport)
 
 
 @pytest.mark.parametrize("prefix", ["|", "!", "&"])
@@ -500,59 +494,71 @@ async def test_raw_domain_values_resembling_paths_are_not_namespace_leaves(clien
 
 
 @pytest.mark.parametrize(
-    ("name", "operator", "value"),
+    ("name", "operator", "value", "message"),
     [
-        ("channels", "in", "e_mail"),
-        ("channels", "in", ["e_mail"]),
-        ("channels", "=", ["e_mail"]),
-        ("priority", "ilike", "high"),
-        ("priority", "in", "high"),
-        ("priority", "in", []),
-        ("priority", "=", "f001f00d"),
-        ("estimated_effort", ">", None),
-        ("estimated_effort", "=", float("inf")),
+        ("channels", "in", "e_mail", "allowed operators: none"),
+        ("channels", "in", ["e_mail"], "allowed operators: none"),
+        ("channels", "=", ["e_mail"], "allowed operators: none"),
+        ("priority", "ilike", "high", "allowed operators"),
+        ("priority", [], "high", "allowed operators"),
+        ("priority", "in", "high", "nonempty list"),
+        ("priority", "in", [], "nonempty list"),
+        ("priority", "=", "f001f00d", "friendly values"),
+        ("estimated_effort", ">", None, "Null is only supported"),
+        ("estimated_effort", "=", float("inf"), "rediscover"),
     ],
 )
 async def test_unsupported_or_invalid_predicates_are_friendly(
-    client, transport, name, operator, value
+    client, transport, name, operator, value, message
 ):
-    with pytest.raises(ClassifiedToolError) as error:
+    with pytest.raises(ClassifiedToolError, match=message) as error:
         await compile_domain(
             client,
             MODEL,
             [["project_id", "=", 7], [f"properties.{CONTAINER}.{name}", operator, value]],
         )
     no_opaque(str(error.value))
-    no_writes(transport)
 
 
-@pytest.mark.parametrize(
-    ("kind", "current", "patch", "expected"),
-    [
-        ("integer", 0, 1, 1),
-        ("date", "2026-10-30", "2026-11-01", "2026-11-01"),
-        ("datetime", "2026-10-30 12:00:00", None, False),
-        ("many2one", [11, "Display"], 12, 12),
-        ("many2many", [[11, "Display"], [12, "Other"]], [13], [13]),
-        ("many2many", False, [], []),
-    ],
-)
-async def test_library_kinds_and_normalized_relation_ids(
-    client, transport, kind, current, patch, expected
-):
-    extra = {"comodel": "res.partner"} if kind.startswith("many2") else {}
-    transport.definitions[8] = [definition("f006f00d", "Other Name", kind, **extra)]
-    transport.rows[43][CONTAINER] = transport.entries(8, [current])
-    result = await read(client, MODEL, [43], [f"properties.{CONTAINER}"])
-    normalized = (
-        [11, 12] if kind == "many2many" and current else 11 if kind == "many2one" else current
+async def test_typed_values_and_normalized_relation_ids(client, transport):
+    transport.definitions[8] = [
+        definition("count", "Count", "integer"),
+        definition("due", "Due", "date"),
+        definition("started", "Started", "datetime"),
+        definition("owner", "Owner", "many2one", comodel="res.partner"),
+        definition("watchers", "Watchers", "many2many", comodel="res.partner"),
+        definition("empty_watchers", "Empty watchers", "many2many", comodel="res.partner"),
+    ]
+    transport.rows[43][CONTAINER] = transport.entries(
+        8,
+        [
+            0,
+            "2026-10-30",
+            "2026-10-30 12:00:00",
+            [11, "Display"],
+            [[11, "Display"], [12, "Other"]],
+            False,
+        ],
     )
-    if kind == "many2many" and current is False:
-        normalized = []
-    assert result[0]["properties"][CONTAINER]["other_name"] == normalized
-    payload = await prepare_update(client, MODEL, 43, {CONTAINER: {"other_name": patch}}, {})
-    assert payload == {CONTAINER: {"f006f00d": expected}}
-    no_writes(transport)
+    result = await read(client, MODEL, [43], [f"properties.{CONTAINER}"])
+    assert result[0]["properties"][CONTAINER] == {
+        "count": 0,
+        "due": "2026-10-30",
+        "started": "2026-10-30 12:00:00",
+        "owner": 11,
+        "watchers": [11, 12],
+        "empty_watchers": [],
+    }
+    patch = {
+        "count": 1,
+        "due": "2026-11-01",
+        "started": None,
+        "owner": 12,
+        "watchers": [13],
+        "empty_watchers": [],
+    }
+    payload = await prepare_update(client, MODEL, 43, {CONTAINER: patch}, {})
+    assert payload == {CONTAINER: {**patch, "started": False}}
 
 
 @pytest.mark.parametrize(
@@ -579,7 +585,6 @@ async def test_patch_validator_rejects_display_pairs_and_wrong_kinds(
     transport.rows[43][CONTAINER] = transport.entries(8, [False])
     with pytest.raises(ClassifiedToolError):
         await prepare_update(client, MODEL, 43, {CONTAINER: {"other_name": patch}}, {})
-    no_writes(transport)
 
 
 async def test_unsupported_untouched_kind_fails(client, transport):
@@ -588,26 +593,6 @@ async def test_unsupported_untouched_kind_fails(client, transport):
     with pytest.raises(ClassifiedToolError) as error:
         await prepare_update(client, MODEL, 42, {CONTAINER: {"notes": "Changed"}}, {})
     assert "internal-unsupported" not in str(error.value)
-    no_writes(transport)
-
-
-@pytest.mark.parametrize("operation", ["discover", "read", "update", "search"])
-async def test_actual_route_metadata_is_required(client, transport, operation):
-    del transport.metadata[CONTAINER]["definition_record_field"]
-    with pytest.raises(ClassifiedToolError, match="rediscover"):
-        if operation == "discover":
-            await discover(client, MODEL, property_field=CONTAINER, parent_id=7)
-        elif operation == "read":
-            await read(client, MODEL, [42], [f"properties.{CONTAINER}"])
-        elif operation == "update":
-            await prepare_update(client, MODEL, 42, {CONTAINER: {"notes": "Changed"}}, {})
-        else:
-            await compile_domain(
-                client,
-                MODEL,
-                [["project_id", "=", 7], [f"properties.{CONTAINER}.priority", "=", "high"]],
-            )
-    no_writes(transport)
 
 
 @pytest.mark.parametrize(
@@ -629,15 +614,6 @@ async def test_nested_or_malformed_friendly_domains_rejected(client, transport, 
     assert transport.calls == []
 
 
-async def test_invalid_operator_is_a_friendly_error(client):
-    with pytest.raises(ClassifiedToolError, match="allowed operators"):
-        await compile_domain(
-            client,
-            MODEL,
-            [["project_id", "=", 7], [f"properties.{CONTAINER}.priority", [], "high"]],
-        )
-
-
 async def test_preflight_preserves_client_write_safety_guard(client, transport):
     guarded = []
 
@@ -653,29 +629,11 @@ async def test_preflight_preserves_client_write_safety_guard(client, transport):
     with pytest.raises(OdooSafetyError):
         await client.write(MODEL, [42], payload)
     assert len(guarded) == 1 and guarded[0].level == "WRITE"
-    no_writes(transport)
-
-
-async def test_array_predicate_rejection_records_source_semantics(client):
-    # Odoo18 odoo/osv/expression.py: in + scalar RHS -> @>, list RHS -> <@.
-    # Odoo19 odoo/orm/fields_properties.py: in requires COLLECTION_TYPES;
-    # singleton uses = OR @>, multiple values use <@. Its domain optimizer
-    # also rewrites collection equality to in. Neither array equality nor list-valued
-    # membership can be passed through with uniform 18/19 semantics.
-    # Until live array search is verified we expose no tag/x2many operators.
-    for operator, value in [("in", "e_mail"), ("in", ["e_mail"]), ("=", ["e_mail"])]:
-        with pytest.raises(ClassifiedToolError, match="allowed operators: none"):
-            await compile_domain(
-                client,
-                MODEL,
-                [["project_id", "=", 7], [f"properties.{CONTAINER}.channels", operator, value]],
-            )
 
 
 async def test_mixed_raw_container_and_friendly_read_is_rejected(client, transport):
     with pytest.raises(ClassifiedToolError, match="friendly properties paths"):
         await read(client, MODEL, [42], ["other_properties", f"properties.{CONTAINER}"])
-    no_writes(transport)
 
 
 @pytest.mark.parametrize("kind", ["char", "json"])
@@ -683,7 +641,6 @@ async def test_container_type_comes_from_metadata(client, transport, kind):
     transport.metadata[CONTAINER]["type"] = kind
     with pytest.raises(ClassifiedToolError, match="container"):
         await prepare_update(client, MODEL, 42, {CONTAINER: {"notes": "Changed"}}, {})
-    no_writes(transport)
 
 
 async def test_unknown_container_is_friendly(client):
@@ -696,16 +653,7 @@ async def test_missing_definition_parent_fails_safely(client, transport):
     transport.rows[42]["project_id"] = False
     with pytest.raises(ClassifiedToolError, match="definition parent"):
         await read(client, MODEL, [42], [f"properties.{CONTAINER}"])
-    no_writes(transport)
 
 
 async def test_empty_id_read(client, transport):
     assert await read(client, MODEL, [], [f"properties.{CONTAINER}"]) == []
-    no_writes(transport)
-
-
-@pytest.mark.parametrize("value", ["E-mail", "EMAIL", "f003f00d"])
-async def test_choice_inputs_require_discovered_alias(client, transport, value):
-    with pytest.raises(ClassifiedToolError, match="friendly values"):
-        await prepare_update(client, MODEL, 42, {CONTAINER: {"channels": [value]}}, {})
-    no_writes(transport)
