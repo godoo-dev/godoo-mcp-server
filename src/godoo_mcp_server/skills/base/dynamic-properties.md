@@ -66,6 +66,26 @@ hidden stored keys or prevent parent moves after preflight. A positive write rep
 is acknowledgement, not readback verification. If dispatch loses its reply, inspect
 actual state before deciding to retry; never retry automatically.
 
+## Create with friendly properties
+
+Before creating a record, discover its properties with `discovery_get_fields`
+using the container field and intended parent ID. For an authorized task creation,
+call `record_create` with the discovered names and ordinary fields together:
+
+```json
+{"model":"project.task","values":{"name":"Plan launch","project_id":7},"properties":{"task_properties":{"priority":"high","estimated_effort":0,"channels":[]}}}
+```
+
+Supply each container's positive definition-parent ID explicitly in `values`;
+friendly creation cannot infer it from Odoo defaults. Nonempty property containers
+are validated before one create. Omitted properties keep server defaults; `null`
+clears. Valid false, zero, empty strings and lists are sent without substitution,
+although Odoo may normalize them on storage (an empty char reads back as `null`).
+Do not mix raw property containers with friendly properties. Creation supports one
+record and returns `id` and `web_url`; use that ID to read back the intended fields.
+Definitions can change after preflight. A denied call stops, and a lost create
+reply requires independent state inspection before any retry to avoid duplicates.
+
 ## Search using the same vocabulary
 
 Constrain the query to one definition parent and use friendly paths in the domain:

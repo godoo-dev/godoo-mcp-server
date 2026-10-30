@@ -241,6 +241,7 @@ class OdooReply:
     """Fault controls for a real committed Odoo write, never a simulated database."""
 
     url: str = ""
+    model: str = "res.partner.category"
     marker: str = field(default_factory=lambda: f"reply-{uuid.uuid4()}")
     drop: bool = False
     writes: int = 0
@@ -259,10 +260,7 @@ async def odoo_reply(odoo_harness: TestHarness) -> AsyncGenerator[OdooReply]:
         async def proxy(scope: Any, receive: Any, send: Any) -> None:
             request = await Request(scope, receive).json()
             args = request.get("params", {}).get("args", [])
-            marked = (
-                args[3:5] == ["res.partner.category", "create"]
-                and args[5][0].get("name") == reply.marker
-            )
+            marked = args[3:5] == [reply.model, "create"] and args[5][0].get("name") == reply.marker
             if marked:
                 reply.writes += 1
             response = await upstream.post(f"{odoo_harness.url}/jsonrpc", json=request)

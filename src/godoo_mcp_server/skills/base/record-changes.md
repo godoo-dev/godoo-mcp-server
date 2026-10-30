@@ -4,7 +4,9 @@ Confirm the intended records, fields and effect within the user's request. Read
 only the current data/schema needed to choose the operation. Existing authorization
 is not a reason to ask again, and generic guidance does not authorize extra writes.
 
-- `record_create(model, values)` returns `id` and `web_url`.
+- `record_create(model, values, properties=None)` returns `id` and `web_url`.
+  Optional friendly properties require their definition-parent IDs in `values`;
+  see [dynamic properties](dynamic-properties.md).
 - `record_update(model, ids, values)` writes the same values to every listed ID and
   returns `success` and `web_urls`.
 - For one record, `record_update` also accepts `properties={container:{name:value}}`

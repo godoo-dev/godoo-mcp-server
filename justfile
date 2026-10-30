@@ -86,7 +86,7 @@ odoo directory major="18": sync
     export MCP_ODOO_FACTS="$directory/odoo-{{ major }}-facts.jsonl"
     rm -f "$MCP_ODOO_FACTS"
     for suite in integration image; do
-        if [[ "$suite" == integration ]]; then selection="-m integration tests/integration/test_vertical.py"; else selection="-m e2e tests/e2e/test_docker_image.py"; fi
+        if [[ "$suite" == integration ]]; then selection="-m integration tests/integration"; else selection="-m e2e tests/e2e/test_docker_image.py"; fi
         uv run --frozen pytest $selection --capture=tee-sys -o junit_logging=all --junitxml="$directory/odoo-{{ major }}-$suite.xml" --basetemp="$directory/odoo-{{ major }}-$suite-tmp"
     done
     uv run --frozen python scripts/candidate.py record-qualification --candidate-dir "$directory" --major {{ major }}

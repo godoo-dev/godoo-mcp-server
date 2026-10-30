@@ -41,7 +41,7 @@ An unknown tool path raises `ToolError`.
 | `mail_mark_activity_done` | `activity_id`, `feedback=''` | `success` |
 | `record_search` | `model`, `domain=None`, `fields=None`, `limit=80`, `offset=0`, `order=None`, `max_return_bytes=500` | `records`, `count`, `web_urls`; or artifact receipt |
 | `record_read` | `model`, `ids`, `fields=None`, `max_return_bytes=500` | `records`, `web_urls`; or artifact receipt |
-| `record_create` | `model`, `values` | `id`, `web_url` |
+| `record_create` | `model`, `values`, `properties=None` | `id`, `web_url` |
 | `record_update` | `model`, `ids`, `values=None`, `properties=None` | `success`, `web_urls` |
 | `record_delete` | `model`, `ids` | `success` |
 | `users_whoami` | none | `uid`, `username`, `database`, `url` |
@@ -105,6 +105,24 @@ Each result record contains `properties.task_properties`, for example
 such as `properties.task_properties.priority` selects one value. Search results
 and downloaded artifacts have the same projection. Calls without a `properties.`
 field path retain their raw representation.
+
+For an authorized creation, supply ordinary values and friendly properties together:
+
+```json
+{"model":"project.task","values":{"name":"Plan launch","project_id":7},"properties":{"task_properties":{"priority":"high","estimated_effort":0,"channels":[]}}}
+```
+
+`record_create` accepts optional `properties` alongside required ordinary
+`values`. Supply each container's positive definition-parent ID in `values`;
+implicit parent defaults are unsupported for friendly creation. Nonempty containers
+are validated together before one create RPC. Omitted properties retain Odoo's
+defaults; `null` clears and valid false/zero/empty values are sent without being
+replaced by defaults. Odoo can normalize them on storage (for example, an empty
+char property reads back as `null`).
+Raw property containers cannot be mixed with friendly creation. Creation remains
+single-record and returns the existing `id` and `web_url` envelope. A lost create
+reply must never be retried automatically; inspect actual Odoo state first.
+Definitions can change after preflight; creation is not an atomic schema snapshot.
 
 ```json
 {"model":"project.task","ids":[42],"properties":{"task_properties":{"priority":"normal","estimated_effort":null}}}

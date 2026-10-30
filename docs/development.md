@@ -174,14 +174,22 @@ credentials, deployment or remote settings changes.
 
 ## Properties client source dependency
 
-The friendly properties adapter consumes godoo-py PR #10 from its immutable
-`59e838012e6da1ebb40247775c9b1c670e10386b` archive with a SHA-256 pin.
+The friendly properties adapter consumes godoo-py PRs #10 and #12 from the immutable
+`f7a17cfab47e992419e09e4624632c620801c274` archive with a SHA-256 pin.
 The released `godoo-client 0.3.0` predates that API. Frozen exports retain the
 archive hash, allowing the native hash-required installed-wheel and image checks
 to consume the same source without Git. This direct dependency is temporary:
 PyPI does not accept direct URL dependencies, so a registry publication first
-needs a client release containing PR #10 and a corresponding specifier/lock update.
+needs a client release containing both PRs and a corresponding specifier/lock update.
 No registry publication is part of this change.
+
+Friendly creation preflights all supplied containers with the client's shared
+codecs, then uses `PropertyBinding.create(refresh=False)` for one create RPC.
+Definitions were freshly loaded during preflight; disabling the binding's extra
+refresh keeps connection failures before dispatch distinct from unknown write
+outcomes. The binding captures the first container's explicit parent and `en_US`
+context. Additional containers are encoded before dispatch, using the same caller
+and safety guards. This does not make definition reads and creation atomic.
 
 The integration harness installs `base,mail,project` to qualify parent-specific
 task properties; the image harness retains `base,mail`. Candidate facts validate
