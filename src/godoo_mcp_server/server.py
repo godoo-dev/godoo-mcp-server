@@ -66,6 +66,7 @@ _TOOL_NAMES = frozenset(
         "mail_mark_activity_done",
         "mail_post_message",
         "mail_schedule_activity",
+        "model_call",
         "record_create",
         "record_delete",
         "record_read",
@@ -77,6 +78,7 @@ _TOOL_NAMES = frozenset(
 )
 _MUTATING_TOOL_NAMES = frozenset(
     {
+        "model_call",
         "action_execute_action",
         "attachments_upload",
         "mail_log_note",
@@ -230,6 +232,7 @@ from godoo_mcp_server.tools import actions as _actions_module  # noqa: F401, E40
 from godoo_mcp_server.tools import attachments as _attachments_module  # noqa: F401, E402
 from godoo_mcp_server.tools import discovery as _disc_module  # noqa: F401, E402
 from godoo_mcp_server.tools import mail as _mail_module  # noqa: F401, E402
+from godoo_mcp_server.tools import models as _models_module  # noqa: F401, E402
 from godoo_mcp_server.tools import records as _records_module  # noqa: F401, E402
 from godoo_mcp_server.tools import users as _users_module  # noqa: F401, E402
 

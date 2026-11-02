@@ -133,6 +133,7 @@ def probe(python: Path, evidence: Path) -> None:
                 assert status == 200
                 tools = {tool["name"]: tool for tool in payload["result"]["tools"]}
                 assert "users_whoami" in tools
+                assert tools["model_call"]["annotations"]["readOnlyHint"] is False
                 assert tools["guidance_get"]["annotations"]["readOnlyHint"] is True
                 assert tools["record_create"]["annotations"]["readOnlyHint"] is False
             status, payload = request("server/discover")

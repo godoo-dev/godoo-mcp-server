@@ -37,7 +37,7 @@ keep the same domain/fields and deterministic order such as `id asc`, then advan
 `offset` by the page length from the inline or downloaded result. Finish on an
 empty/short page or the task's chosen bound;
 report truncation when stopping early. Offset pagination is not a snapshot: concurrent
-changes can move rows between pages. No exact-count/aggregate tool is exposed.
+changes can move rows between pages. No dedicated exact-count/aggregate tool is exposed.
 
 ## JSON domain syntax
 
@@ -76,7 +76,8 @@ Convert datetime boundaries to UTC; prefer half-open ranges (`>=` start, `<` nex
 boundary) when selecting a whole day. For overdue work, establish the relevant
 user date/timezone before choosing the cutoff.
 
-No general RPC context input exists. Default Odoo active-record, language and
-company context still apply; an `active=false` or company domain cannot override
-those context defaults or the caller's ACLs. Do not claim exhaustive archived or
-multi-company results from an ordinary page.
+The record search/read tools have no general context input. For a native method
+requiring context, use `model_call` with `kwargs.context`. Default Odoo
+active-record, language and company context still apply; an `active=false` or
+company domain cannot override those context defaults or the caller's ACLs. Do not
+claim exhaustive archived or multi-company results from an ordinary page.

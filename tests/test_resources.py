@@ -343,6 +343,7 @@ async def test_all_tools_in_list(mcp_client: AsyncClient) -> None:
     tool_names = {t["name"] for t in tools if isinstance(t, dict)}
     # All tool groups must be present
     expected_tools = {
+        "model_call",
         # records
         "record_search",
         "record_read",

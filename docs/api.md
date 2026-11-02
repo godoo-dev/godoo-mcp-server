@@ -39,6 +39,7 @@ An unknown tool path raises `ToolError`.
 | `mail_schedule_activity` | `model`, `res_id`, `activity_type_id`, `date_deadline`, `note=None`, `user_id=None` | `activity_id` |
 | `mail_list_activities` | `model`, `res_id`, `limit=80` | `activities`, `count` |
 | `mail_mark_activity_done` | `activity_id`, `feedback=''` | `success` |
+| `model_call` | `model`, `method`, `args=None`, `kwargs=None` | `result`: unchanged native JSON value |
 | `record_search` | `model`, `domain=None`, `fields=None`, `limit=80`, `offset=0`, `order=None`, `max_return_bytes=500` | `records`, `count`, `web_urls`; or artifact receipt |
 | `record_read` | `model`, `ids`, `fields=None`, `max_return_bytes=500` | `records`, `web_urls`; or artifact receipt |
 | `record_create` | `model`, `values`, `properties=None` | `id`, `web_url` |
@@ -83,6 +84,29 @@ arguments for `discovery_get_fields` and `record_search`, respectively:
 
 These are argument examples, not an observed Odoo transcript. Discover actual
 models/fields and review requested effects before invoking mutation tools.
+
+## Call an Odoo model method
+
+`model_call` invokes installed model/addon methods using native positional `args`
+and keyword `kwargs`. Omitted or `null` values default to `[]` and `{}`. Model and
+method must be nonempty strings; `kwargs.context`, when supplied, must be an object.
+Recordset methods commonly take an ID list as their first positional argument.
+For example, with an accessible OCA MIS Builder instance:
+
+```json
+{"model":"mis.report.instance","method":"compute","args":[[42]],"kwargs":{"context":{"mis_pivot_date":"2026-10-31","allowed_company_ids":[1,2],"lang":"es_ES"}}}
+```
+
+The response is `{"result": <native JSON value>}`, returned inline without
+normalizing false/null/scalar/container values or executing returned actions.
+The same tool calls `drilldown` with `args=[[42], <cell.drilldown_arg>]` and the
+same context. Method availability, signatures and effects depend on installed addons.
+
+This tool can write/delete data, so its annotations are conservative. It retains
+the client guard and caller identity, adds no confirmation or `safetyLevel`
+override, and never retries automatically. After an uncertain outcome, inspect
+actual state before retrying. Agent-facing usage is delivered in the bundled
+[Odoo guidance](../src/godoo_mcp_server/skills/SKILL.md#tool-boundaries).
 
 ## Friendly dynamic properties
 

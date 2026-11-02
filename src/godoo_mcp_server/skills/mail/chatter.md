@@ -56,7 +56,9 @@ while accepting its other inputs.
 Internal notes are intended for internal audiences. Do not promise zero emails or
 notifications: explicit recipients, followers, subtypes and custom Odoo behavior
 can affect delivery. Confirm the requested audience and use the intended subtype.
-No general context input exists for disabling tracking or email behavior.
+These posting tools have no general context input. Native methods invoked through
+`model_call` accept `kwargs.context`, but context flags do not guarantee suppression
+of notifications across installed addons.
 
 A denied call is not authorization to try a different posting tool. A lost reply
 may hide a committed message: inspect for that message before considering another

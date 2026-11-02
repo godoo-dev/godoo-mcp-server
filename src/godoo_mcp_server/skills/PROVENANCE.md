@@ -19,11 +19,14 @@ Adapted source families:
 - `mail/chatter.md`, `mail/activities.md` → existing mail references.
 
 Examples were rewritten for this server's actual MCP contracts. Legacy CLI setup,
-TypeScript helpers, context flags, timer conventions, arbitrary RPC, portal token
-creation and module-management/state workflows are not supplied by this bundle.
+TypeScript helpers, timer conventions, portal token creation and module-management/
+state workflows are not supplied by this bundle.
 Specialist accounting, contracts, attendance, timesheets, product configurator,
 Discuss and MIS Builder material remains outside this first adoption wave.
 Upstream testable examples are source evidence, not verification of these guides.
+
+The general `model_call` and `kwargs.context` guidance is original to this server
+and follows the same CC0-1.0 dedication; no client implementation code is copied.
 
 The query-result delivery guidance is original to this server: inline byte limits,
 private JSON artifact receipts and calculation-code downloads are not upstream

@@ -1,8 +1,8 @@
 # godoo-mcp-server
 
 Operational MCP access to Odoo through record, discovery, chatter, activity,
-action, attachment and user tools, plus bundled workflow guidance. The Python
-server uses the godoo client and each caller's Odoo permissions.
+action, attachment, general model-method and user tools, plus bundled workflow
+guidance. The Python server uses the godoo client and each caller's Odoo permissions.
 
 This is the operational Odoo MCP. Odoo Atlas provides a separate read-only
 knowledge MCP. `godoo-proxy` owns the broader commercial OAuth/SSO gateway.
