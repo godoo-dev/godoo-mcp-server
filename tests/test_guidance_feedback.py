@@ -96,6 +96,7 @@ async def test_tool_annotations_preserve_mutation_classification(mcp_client):
     )
     tools = {t["name"]: t for t in payload(response)["result"]["tools"]}
     writes = {
+        "model_call",
         "record_create",
         "record_update",
         "record_delete",

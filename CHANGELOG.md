@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- General `model_call` tool for invoking installed Odoo model methods with native
+  arguments, request context and unchanged results.
 - Friendly dynamic property names and choices through existing discovery, read,
   update and scoped search tools, including sparse single-record changes.
 - Friendly properties during record creation, with parent-specific preflight,

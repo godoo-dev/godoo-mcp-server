@@ -1,6 +1,6 @@
 ---
 name: odoo
-description: Query and change Odoo records through godoo MCP, using the current target's schema and supported record, chatter and activity tools.
+description: Query and change Odoo through godoo MCP, using the current target's schema, model methods and supported record, chatter and activity tools.
 ---
 
 # Odoo MCP Server — Skills Index
@@ -43,10 +43,17 @@ require it. The `odoo://model/...` resource may be cold;
 
 ## Tool boundaries
 
-Record tools provide search/read/create/update/delete primitives, not every Odoo
-business method. Chatter, activities and attachments have dedicated tools. General
-RPC context, arbitrary model methods, aggregates, language/company switching,
-module installation, timers and state-manager plan/apply are not exposed.
+Use `model_call(model, method, args=None, kwargs=None)` for installed Odoo methods
+beyond the record, chatter, activity and attachment convenience tools. Pass native
+positional arguments in `args`; recordset methods commonly start with a list of
+record IDs, such as `args=[[42]]`. Pass request context in `kwargs.context`, for
+example `{"context":{"allowed_company_ids":[1,2],"lang":"es_ES"}}`.
+The native return value is in `result`; returned actions are not executed.
+Obtain the installed method's argument contract from a trusted source: field
+discovery does not describe method signatures. Methods can change/delete data
+or cause external effects; context does not grant permission. No caller-supplied
+`safetyLevel` override, timers or state-manager plan/apply interface is provided.
+
 A server action can change data: `action_execute_action` takes an action ID only,
 without target record IDs or execution context. Do not substitute it for a missing
 scoped workflow unless its configured behavior fits the authorized operation.
