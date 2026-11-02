@@ -8,7 +8,7 @@ const credentials = {
   "X-Odoo-Username": "private-user",
   "X-Odoo-Password": "private-secret",
 };
-export function rpcRequest(
+function rpcRequest(
   method: string,
   params: Record<string, unknown> = {},
   headers: Record<string, string> = {},
@@ -42,7 +42,7 @@ export function rpcRequest(
     }),
   });
 }
-export async function rpcValue(response: Response) {
+async function rpcValue(response: Response) {
   const text = await response.text();
   return JSON.parse(
     text
@@ -66,6 +66,7 @@ describe("public MCP contract", () => {
       expect(tool.inputSchema).toEqual(expected.inputSchema);
       expect(tool.annotations).toEqual(expected.annotations);
       expect(tool.description).toEqual(expected.description);
+      expect(tool.outputSchema).toEqual(expected.outputSchema);
     }
     await handler.close();
   });

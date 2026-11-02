@@ -29,9 +29,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "result"
-      ],
+      "required": ["result"],
       "type": "object",
       "x-fastmcp-wrap-result": true
     },
@@ -95,9 +93,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "action_id"
-      ],
+      "required": ["action_id"],
       "type": "object"
     },
     "outputSchema": {
@@ -205,12 +201,7 @@
           "default": null
         }
       },
-      "required": [
-        "name",
-        "content_base64",
-        "res_model",
-        "res_id"
-      ],
+      "required": ["name", "content_base64", "res_model", "res_id"],
       "type": "object"
     },
     "outputSchema": {
@@ -237,9 +228,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "attachment_id"
-      ],
+      "required": ["attachment_id"],
       "type": "object"
     },
     "outputSchema": {
@@ -337,9 +326,7 @@
           "default": null
         }
       },
-      "required": [
-        "model"
-      ],
+      "required": ["model"],
       "type": "object"
     },
     "outputSchema": {
@@ -444,19 +431,11 @@
         },
         "body_format": {
           "default": "md",
-          "enum": [
-            "md",
-            "html",
-            "txt"
-          ],
+          "enum": ["md", "html", "txt"],
           "type": "string"
         }
       },
-      "required": [
-        "model",
-        "res_id",
-        "body"
-      ],
+      "required": ["model", "res_id", "body"],
       "type": "object"
     },
     "outputSchema": {
@@ -490,19 +469,11 @@
         },
         "body_format": {
           "default": "md",
-          "enum": [
-            "md",
-            "html",
-            "txt"
-          ],
+          "enum": ["md", "html", "txt"],
           "type": "string"
         }
       },
-      "required": [
-        "model",
-        "res_id",
-        "body"
-      ],
+      "required": ["model", "res_id", "body"],
       "type": "object"
     },
     "outputSchema": {
@@ -540,10 +511,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "model",
-        "res_id"
-      ],
+      "required": ["model", "res_id"],
       "type": "object"
     },
     "outputSchema": {
@@ -601,12 +569,7 @@
           "default": null
         }
       },
-      "required": [
-        "model",
-        "res_id",
-        "activity_type_id",
-        "date_deadline"
-      ],
+      "required": ["model", "res_id", "activity_type_id", "date_deadline"],
       "type": "object"
     },
     "outputSchema": {
@@ -640,10 +603,7 @@
           "type": "integer"
         }
       },
-      "required": [
-        "model",
-        "res_id"
-      ],
+      "required": ["model", "res_id"],
       "type": "object"
     },
     "outputSchema": {
@@ -674,9 +634,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "activity_id"
-      ],
+      "required": ["activity_id"],
       "type": "object"
     },
     "outputSchema": {
@@ -732,10 +690,7 @@
           "default": null
         }
       },
-      "required": [
-        "model",
-        "method"
-      ],
+      "required": ["model", "method"],
       "type": "object"
     },
     "outputSchema": {
@@ -822,9 +777,7 @@
           "default": 500
         }
       },
-      "required": [
-        "model"
-      ],
+      "required": ["model"],
       "type": "object"
     },
     "outputSchema": {
@@ -885,10 +838,7 @@
           "default": 500
         }
       },
-      "required": [
-        "model",
-        "ids"
-      ],
+      "required": ["model", "ids"],
       "type": "object"
     },
     "outputSchema": {
@@ -936,10 +886,7 @@
           "default": null
         }
       },
-      "required": [
-        "model",
-        "values"
-      ],
+      "required": ["model", "values"],
       "type": "object"
     },
     "outputSchema": {
@@ -999,10 +946,7 @@
           "default": null
         }
       },
-      "required": [
-        "model",
-        "ids"
-      ],
+      "required": ["model", "ids"],
       "type": "object"
     },
     "outputSchema": {
@@ -1035,10 +979,7 @@
           "type": "array"
         }
       },
-      "required": [
-        "model",
-        "ids"
-      ],
+      "required": ["model", "ids"],
       "type": "object"
     },
     "outputSchema": {

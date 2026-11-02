@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "godoo-mcp-server",
+  "main": "dist/worker.mjs",
+  "compatibility_date": "2026-11-02",
+  "vars": {
+    "ODOO_EXPORT_PROVIDER": "r2",
+    "ODOO_EXPORT_BUCKET": "private-exports"
+  },
+  "r2_buckets": [{ "binding": "EXPORTS", "bucket_name": "private-exports" }],
+  "triggers": { "crons": ["* * * * *"] }
+}
