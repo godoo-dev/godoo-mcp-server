@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
+import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
 import { Miniflare, Response as MiniflareResponse } from "miniflare";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import contracts from "../../src/ts/tool-contracts.json" with { type: "json" };
@@ -66,7 +66,7 @@ function deferred() {
   });
   return { promise, resolve: () => resolve?.() };
 }
-async function bounded(promise: Promise<unknown>): Promise<void> {
+async function bounded(promise: Promise<unknown>, timeoutMs = 5000): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
@@ -74,7 +74,7 @@ async function bounded(promise: Promise<unknown>): Promise<void> {
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(
           () => reject(new Error("Worker cancellation did not reach upstream")),
-          5000,
+          timeoutMs,
         );
       }),
     ]);
@@ -162,7 +162,7 @@ describe("built native Cloudflare Worker", () => {
               },
               AWS_ACCESS_KEY_ID: { type: "text", value: "disposable-access" },
               AWS_SECRET_ACCESS_KEY: { type: "text", value: "disposable-secret" },
-              ODOO_REQUEST_TIMEOUT_MS: { type: "text", value: "15000" },
+              ODOO_REQUEST_TIMEOUT_MS: { type: "text", value: "60000" },
             },
           },
         },
@@ -440,20 +440,30 @@ describe("built native Cloudflare Worker", () => {
     expect(await bucket.head("exports/v1/1/not-managed.json")).not.toBeNull();
   });
 
-  it("cancels an upstream mutation when the native HTTP client disconnects, without replay", async () => {
-    const controller = new AbortController();
-    const response = await fetch(`${directWorkerUrl}/mcp`, {
-      ...rpc(
-        "tools/call",
-        { name: "model_call", arguments: { model: "res.partner", method: "hold_write" } },
-        upstreamUrl,
-      ),
-      signal: controller.signal,
+  it("cancels a disconnected native HTTP mutation on the next heartbeat without replay", async () => {
+    const options = rpc(
+      "tools/call",
+      { name: "model_call", arguments: { model: "res.partner", method: "hold_write" } },
+      upstreamUrl,
+    );
+    let connection: ReturnType<typeof httpRequest> | undefined;
+    const response = await new Promise<IncomingMessage>((resolve, reject) => {
+      connection = httpRequest(
+        `${directWorkerUrl}/mcp`,
+        { method: options.method, headers: options.headers },
+        resolve,
+      );
+      connection.on("error", reject);
+      connection.end(options.body);
     });
+    response.on("error", () => undefined);
+    response.resume();
     await bounded(writeStarted.promise);
-    controller.abort();
-    await response.body?.cancel().catch(() => undefined);
-    await bounded(writeClosed.promise);
+    response.destroy();
+    connection?.destroy();
+    // workerd detects a quiet socket disconnect when the 15s SSE heartbeat
+    // writes again. The 60s Odoo timeout cannot satisfy this 20s bound.
+    await bounded(writeClosed.promise, 20000);
     expect(writes).toBe(1);
     const healthy = await worker.dispatchFetch("https://mcp.test/healthz");
     expect(await healthy.json()).toEqual({ status: "ok" });

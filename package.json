@@ -27,7 +27,7 @@
     "lint": "biome check src/ts tests/ts scripts/*.mjs",
     "test": "vitest run",
     "start": "node dist/node.mjs",
-    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build"
+    "check": "pnpm typecheck && pnpm lint && pnpm build && pnpm test"
   },
   "devDependencies": {
     "@aws-sdk/credential-provider-node": "3.972.92",
@@ -44,7 +44,7 @@
     "debug": "4.4.3",
     "esbuild": "0.27.0",
     "markdown-it": "14.1.0",
-    "miniflare": "4.20260730.0",
+    "miniflare": "5.20261101.0-beta",
     "typescript": "6.0.3",
     "vitest": "4.1.6",
     "wrangler": "4.156.1",

@@ -152,6 +152,39 @@ describe("S3 and R2 fetch storage", () => {
     expect(calls.map((request) => request.method)).toEqual(["PUT", "HEAD", "DELETE"]);
   });
 
+  it.each([
+    "put",
+    "head",
+    "list",
+    "delete",
+  ])("cancels the actual S3 %s HTTP request with its caller signal", async (operation) => {
+    const controller = new AbortController();
+    let started: (() => void) | undefined;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const fetchImpl: typeof fetch = async (input) => {
+      const request = input as Request;
+      started?.();
+      return new Promise((_resolve, reject) => {
+        request.signal.addEventListener("abort", () => reject(request.signal.reason), {
+          once: true,
+        });
+      });
+    };
+    const store = createStorage(CONFIG, fetchImpl);
+    const pending =
+      operation === "put"
+        ? store.put(key, new Uint8Array([1]), {}, controller.signal)
+        : operation === "list"
+          ? collect(store.list("exports/v1/", controller.signal))
+          : store[operation as "head" | "delete"](key, controller.signal);
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await ready;
+    controller.abort();
+    await rejected;
+  });
+
   it("lists every page, decodes XML names and preserves continuation tokens", async () => {
     const calls: URL[] = [];
     const fetchImpl: typeof fetch = async (input) => {
@@ -207,9 +240,30 @@ describe("S3 and R2 fetch storage", () => {
 describe("native R2 binding", () => {
   it("uses native object operations while keeping the signer separate", async () => {
     const mf = new Miniflare({
-      modules: true,
-      script: "export default { fetch() { return new Response('ok'); } };",
-      r2Buckets: ["EXPORTS"],
+      host: "127.0.0.1",
+      port: 0,
+      cf: false,
+      enableDevRegistry: false,
+      logRequests: false,
+      telemetry: { enabled: false },
+      workers: [
+        {
+          config: {
+            name: "native-storage",
+            compatibilityDate: "2026-11-02",
+            manifest: {
+              mainModule: "storage.mjs",
+              modules: {
+                "storage.mjs": {
+                  type: "esm",
+                  contents: "export default { fetch() { return new Response('ok'); } };",
+                },
+              },
+            },
+            env: { EXPORTS: { type: "r2", name: "private-exports" } },
+          },
+        },
+      ],
     });
     try {
       const bucket = await mf.getR2Bucket("EXPORTS");
@@ -233,7 +287,7 @@ describe("native R2 binding", () => {
       expect(await store.head(key)).toEqual({ key, lastModified: object.uploaded });
       expect((await collect(store.list("exports/v1/"))).map((item) => item.key)).toEqual([key]);
       expect(await store.sign(key, 60)).toBe(`https://private.test/${key}?ttl=60`);
-      expect(signer).toHaveBeenCalledExactlyOnceWith(key, 60);
+      expect(signer).toHaveBeenCalledExactlyOnceWith(key, 60, undefined);
       await store.delete(key);
       expect(await bucket.head(key)).toBeNull();
       await expect(store.head(key)).rejects.toMatchObject({ name: "NotFoundError" });
@@ -303,6 +357,43 @@ async function gcsFixture(fetchImpl: typeof fetch) {
 }
 
 describe("GCS service account storage", () => {
+  it("cancels one OAuth waiter without cancelling the shared exchange or another caller", async () => {
+    let release: (() => void) | undefined;
+    let started: (() => void) | undefined;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const signals: (AbortSignal | null | undefined)[] = [];
+    let exchanges = 0;
+    const { store } = await gcsFixture(async (input, init) => {
+      const url = new URL(String(input));
+      if (url.hostname === "oauth2.googleapis.com") {
+        exchanges++;
+        started?.();
+        await held;
+        return Response.json({ access_token: "private-token", expires_in: 3600 });
+      }
+      signals.push(init?.signal);
+      return Response.json({ updated: "2026-11-02T12:00:00Z" });
+    });
+    const first = new AbortController();
+    const second = new AbortController();
+    const rejected = expect(store.head(key, first.signal)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    await ready;
+    const surviving = store.head(key, second.signal);
+    first.abort();
+    await rejected;
+    release?.();
+    await expect(surviving).resolves.toMatchObject({ key });
+    expect(exchanges).toBe(1);
+    expect(signals).toEqual([second.signal]);
+  });
+
   it("generates an independently verifiable V4 RSA signature without a network call", async () => {
     const fetchImpl = vi.fn<typeof fetch>();
     const { store, pair } = await gcsFixture(fetchImpl);

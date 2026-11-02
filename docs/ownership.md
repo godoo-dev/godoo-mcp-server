@@ -79,13 +79,13 @@ this target as available in an installation.
 
 The [verifier](../.agents/skills/mcp-verification/SKILL.md) remains the concrete
 native proof procedure. Preserve frozen tools/locks, exact candidate identity,
-installed-wheel checks, Odoo18 and exact-image proof, and the `required` CI
+installed-package checks, Odoo18/19 and exact-image proof, and the `required` CI
 aggregate. Source declarations, a green hosted run and applied branch protection
 are different facts. Documentation maintenance does not commission gate repairs.
 
 Projects retain independent versions. Before an authorized publication, reconcile
 registry history/reserved versions, prepare versioned source and qualify immutable
-wheel/image bytes through the native publisher. Resume only missing objects after
+package/image bytes through the native publisher. Resume only missing objects after
 a partial publication; accept existing objects only if their bytes match. A
 collision stops that object and its dependents. Keep source integration,
 publication, runtime and consuming acceptance separate; passing checks supplies

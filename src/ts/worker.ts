@@ -12,11 +12,15 @@ function runtime(env: WorkerEnv): Runtime {
     Object.entries(env).filter((item): item is [string, string] => typeof item[1] === "string"),
   );
   const result: Runtime = { config, log: (event) => console.log(JSON.stringify(event)) };
-  if (env.EXPORTS) {
+  if (env.EXPORTS && (!config.ODOO_EXPORT_PROVIDER || config.ODOO_EXPORT_PROVIDER === "r2")) {
     config.ODOO_EXPORT_PROVIDER ||= "r2";
     // R2 binding accesses objects; scoped S3 credentials sign external download capabilities.
-    const signer = createStorage(config);
-    result.storage = createR2Storage(env.EXPORTS, signer);
+    try {
+      const signer = createStorage(config);
+      result.storage = createR2Storage(env.EXPORTS, signer);
+    } catch {
+      result.log?.({ event: "export_storage_unavailable" });
+    }
   }
   return result;
 }

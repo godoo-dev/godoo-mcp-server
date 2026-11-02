@@ -51,11 +51,15 @@ function httpsUrl(value: string): boolean {
 
 async function rollback(store: ObjectStore, key: string, runtime: Runtime): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const cleanup = new AbortController();
   try {
     await Promise.race([
-      store.delete(key),
+      store.delete(key, cleanup.signal),
       new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error("Cleanup timed out")), 5000);
+        timer = setTimeout(() => {
+          cleanup.abort();
+          reject(new Error("Cleanup timed out"));
+        }, 5000);
       }),
     ]);
   } catch {
@@ -91,8 +95,10 @@ export async function deliverArtifact(
   const key = `exports/v1/${timing.retention}/${artifactId}.${options.filename === undefined ? "json" : "bin"}`;
   const expiresAt = new Date(Math.floor(now(runtime).getTime() / 1000) * 1000 + timing.ttl * 1000);
   try {
+    runtime.signal?.throwIfAborted();
     // Sign first: provider upload time plus retention can never precede URL expiry plus grace.
-    const url = await store.sign(key, timing.ttl);
+    const url = await store.sign(key, timing.ttl, runtime.signal);
+    runtime.signal?.throwIfAborted();
     if (!httpsUrl(url)) throw new Error("Invalid signed URL");
     const metadata: Record<string, string> = {
       "Content-Type": options.mimetype ?? "application/json",
@@ -105,12 +111,15 @@ export async function deliverArtifact(
       );
       metadata["Content-Disposition"] = `attachment; filename*=UTF-8''${filename}`;
     }
-    await store.put(key, content, metadata);
-    const uploaded = await store.head(key);
+    await store.put(key, content, metadata, runtime.signal);
+    runtime.signal?.throwIfAborted();
+    const uploaded = await store.head(key, runtime.signal);
+    runtime.signal?.throwIfAborted();
     if (now(runtime) >= expiresAt || !Number.isFinite(uploaded.lastModified.getTime())) {
       throw new Error("Expired or invalid artifact");
     }
     const digest = await crypto.subtle.digest("SHA-256", content as BufferSource);
+    runtime.signal?.throwIfAborted();
     return {
       delivery: "artifact",
       artifact_id: artifactId,
@@ -147,6 +156,7 @@ export async function deliverRecordResult(
   options: RecordDeliveryOptions,
   runtime: Runtime,
 ): Promise<Record<string, unknown>> {
+  runtime.signal?.throwIfAborted();
   const bound = options.maxReturnBytes === undefined ? 500 : options.maxReturnBytes;
   if (bound === null) return result;
   if (!Number.isSafeInteger(bound) || bound < 0) {
@@ -183,7 +193,8 @@ export async function cleanupExpired(runtime: Runtime): Promise<number> {
   const store = storage(runtime);
   const cutoff = now(runtime).getTime();
   let deleted = 0;
-  for await (const object of store.list("exports/v1/")) {
+  for await (const object of store.list("exports/v1/", runtime.signal)) {
+    runtime.signal?.throwIfAborted();
     const match = MANAGED_KEY.exec(object.key);
     if (!match) continue;
     const duration = Number(match[1]);
@@ -191,7 +202,7 @@ export async function cleanupExpired(runtime: Runtime): Promise<number> {
     if (!Number.isSafeInteger(duration) || !Number.isFinite(deadline) || deadline > cutoff)
       continue;
     try {
-      await store.delete(object.key);
+      await store.delete(object.key, runtime.signal);
       deleted += 1;
     } catch (error) {
       if (error instanceof Error && error.name === "NotFoundError") continue;

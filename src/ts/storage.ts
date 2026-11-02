@@ -6,6 +6,24 @@ function failure(message = "Private export storage operation failed"): PublicErr
   return new PublicError(message, "export_failed");
 }
 
+/** Shared credential work may outlive a caller; it must not hold that caller open. */
+async function waiting<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  signal?.throwIfAborted();
+  if (!signal) return operation;
+  let abort: (() => void) | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_resolve, reject) => {
+        abort = () => reject(signal.reason);
+        signal.addEventListener("abort", abort, { once: true });
+      }),
+    ]);
+  } finally {
+    if (abort) signal.removeEventListener("abort", abort);
+  }
+}
+
 function encode(value: string): string {
   return encodeURIComponent(value).replace(
     /[!'()*]/g,
@@ -92,12 +110,13 @@ function s3Storage(
   if (r2 && !address) throw failure();
   const base = endpoint(address || `https://s3.${region}.amazonaws.com`);
   base.pathname = `${base.pathname.replace(/\/$/, "")}/${encode(bucket)}`;
-  const client = async (): Promise<AwsClient> => {
+  const client = async (signal?: AbortSignal): Promise<AwsClient> => {
     try {
+      signal?.throwIfAborted();
       // The provider owns caching and refresh. Resolve before every signature so
       // long-running Node instances do not retain an expired workload identity.
       const credentials = resolveCredentials
-        ? await resolveCredentials()
+        ? await waiting(resolveCredentials(), signal)
         : { accessKeyId, secretAccessKey, sessionToken: config.AWS_SESSION_TOKEN };
       if (!credentials.accessKeyId || !credentials.secretAccessKey) throw failure();
       return new AwsClient({
@@ -117,35 +136,56 @@ function s3Storage(
     if (key !== undefined) result.pathname += `/${path(key)}`;
     return result;
   };
-  const request = async (target: URL, init: RequestInit): Promise<Response> =>
-    check(await fetchImpl(await (await client()).sign(target, init)));
+  const request = async (
+    target: URL,
+    init: RequestInit,
+    signal?: AbortSignal,
+  ): Promise<Response> => {
+    signal?.throwIfAborted();
+    const signed = await (await client(signal)).sign(target, { ...init, signal });
+    signal?.throwIfAborted();
+    return check(await fetchImpl(signed));
+  };
   return {
-    async sign(key, expiresInSeconds) {
+    async sign(key, expiresInSeconds, signal) {
+      signal?.throwIfAborted();
       const target = url(key);
       target.searchParams.set("X-Amz-Expires", String(expiresInSeconds));
-      return (await (await client()).sign(target, { method: "GET", aws: { signQuery: true } })).url;
-    },
-    async put(key, content, metadata) {
-      const response = await request(url(key), {
-        method: "PUT",
-        headers: metadata,
-        body: content as BodyInit,
+      const signed = await (await client(signal)).sign(target, {
+        method: "GET",
+        aws: { signQuery: true },
       });
-      await response.body?.cancel();
+      signal?.throwIfAborted();
+      return signed.url;
     },
-    async head(key) {
-      const response = await request(url(key), { method: "HEAD" });
+    async put(key, content, metadata, signal) {
+      const response = await request(
+        url(key),
+        {
+          method: "PUT",
+          headers: metadata,
+          body: content as BodyInit,
+        },
+        signal,
+      );
+      await response.body?.cancel();
+      signal?.throwIfAborted();
+    },
+    async head(key, signal) {
+      const response = await request(url(key), { method: "HEAD" }, signal);
+      signal?.throwIfAborted();
       return { key, lastModified: checkedDate(response.headers.get("last-modified")) };
     },
-    async *list(prefix) {
+    async *list(prefix, signal) {
       let cursor: string | undefined;
       do {
         const target = url();
         target.searchParams.set("list-type", "2");
         target.searchParams.set("prefix", prefix);
         if (cursor) target.searchParams.set("continuation-token", cursor);
-        const response = await request(target, { method: "GET" });
+        const response = await request(target, { method: "GET" }, signal);
         const document = await response.text();
+        signal?.throwIfAborted();
         if (!/<ListBucketResult(?:\s|>)/.test(document)) throw failure();
         for (const match of document.matchAll(/<Contents(?:\s[^>]*)?>([\s\S]*?)<\/Contents>/g)) {
           const key = element(match[1], "Key");
@@ -158,8 +198,8 @@ function s3Storage(
         cursor = element(document, "IsTruncated") === "true" ? next : undefined;
       } while (cursor);
     },
-    async delete(key) {
-      const response = await request(url(key), { method: "DELETE" });
+    async delete(key, signal) {
+      const response = await request(url(key), { method: "DELETE" }, signal);
       await response.body?.cancel();
     },
   };
@@ -214,7 +254,8 @@ function gcsStorage(config: Config, fetchImpl: typeof fetch): ObjectStore {
   };
   let cachedToken: { value: string; expiresAt: number } | undefined;
   let pendingToken: Promise<string> | undefined;
-  const accessToken = async (): Promise<string> => {
+  const accessToken = async (signal?: AbortSignal): Promise<string> => {
+    signal?.throwIfAborted();
     if (cachedToken && Date.now() < cachedToken.expiresAt - 60000) return cachedToken.value;
     pendingToken ??= (async () => {
       const issued = Math.floor(Date.now() / 1000);
@@ -236,6 +277,8 @@ function gcsStorage(config: Config, fetchImpl: typeof fetch): ObjectStore {
       const assertion = `${unsigned}.${base64Url(await rsaSign(unsigned))}`;
       const response = await check(
         await fetchImpl("https://oauth2.googleapis.com/token", {
+          // This token exchange is shared; one caller must not cancel its peers.
+          signal: AbortSignal.timeout(120000),
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({
@@ -257,21 +300,26 @@ function gcsStorage(config: Config, fetchImpl: typeof fetch): ObjectStore {
         expiresAt: Date.now() + (token.expires_in ?? 0) * 1000,
       };
       return token.access_token;
-    })();
-    try {
-      return await pendingToken;
-    } finally {
+    })().finally(() => {
       pendingToken = undefined;
-    }
+    });
+    return waiting(pendingToken, signal);
   };
   const api = `https://storage.googleapis.com/storage/v1/b/${encode(bucket)}/o`;
-  const request = async (target: string | URL, init: RequestInit): Promise<Response> => {
+  const request = async (
+    target: string | URL,
+    init: RequestInit,
+    signal?: AbortSignal,
+  ): Promise<Response> => {
+    signal?.throwIfAborted();
     const headers = new Headers(init.headers);
-    headers.set("Authorization", `Bearer ${await accessToken()}`);
-    return check(await fetchImpl(target, { ...init, headers }));
+    headers.set("Authorization", `Bearer ${await accessToken(signal)}`);
+    signal?.throwIfAborted();
+    return check(await fetchImpl(target, { ...init, headers, signal }));
   };
   return {
-    async sign(key, expiresInSeconds) {
+    async sign(key, expiresInSeconds, signal) {
+      signal?.throwIfAborted();
       const timestamp = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
       const scope = `${timestamp.slice(0, 8)}/auto/storage/goog4_request`;
       const pairs = [
@@ -290,28 +338,33 @@ function gcsStorage(config: Config, fetchImpl: typeof fetch): ObjectStore {
       const signature = await rsaSign(
         `GOOG4-RSA-SHA256\n${timestamp}\n${scope}\n${await sha256(canonical)}`,
       );
+      signal?.throwIfAborted();
       const hex = Array.from(signature, (byte) => byte.toString(16).padStart(2, "0")).join("");
       return `https://storage.googleapis.com${canonicalPath}?${query}&X-Goog-Signature=${hex}`;
     },
-    async put(key, content, metadata) {
+    async put(key, content, metadata, signal) {
       const start = new URL(
         `https://storage.googleapis.com/upload/storage/v1/b/${encode(bucket)}/o`,
       );
       start.searchParams.set("uploadType", "resumable");
-      const response = await request(start, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "X-Upload-Content-Type": metadata["Content-Type"] || "application/octet-stream",
-          "X-Upload-Content-Length": String(content.byteLength),
+      const response = await request(
+        start,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "X-Upload-Content-Type": metadata["Content-Type"] || "application/octet-stream",
+            "X-Upload-Content-Length": String(content.byteLength),
+          },
+          body: JSON.stringify({
+            name: key,
+            contentType: metadata["Content-Type"],
+            cacheControl: metadata["Cache-Control"],
+            contentDisposition: metadata["Content-Disposition"],
+          }),
         },
-        body: JSON.stringify({
-          name: key,
-          contentType: metadata["Content-Type"],
-          cacheControl: metadata["Cache-Control"],
-          contentDisposition: metadata["Content-Disposition"],
-        }),
-      });
+        signal,
+      );
       const location = response.headers.get("location");
       await response.body?.cancel();
       if (!location) throw failure();
@@ -323,26 +376,37 @@ function gcsStorage(config: Config, fetchImpl: typeof fetch): ObjectStore {
         uploadUrl.password
       )
         throw failure();
-      const uploaded = await request(location, { method: "PUT", body: content as BodyInit });
+      const uploaded = await request(
+        location,
+        { method: "PUT", body: content as BodyInit },
+        signal,
+      );
       await uploaded.body?.cancel();
+      signal?.throwIfAborted();
     },
-    async head(key) {
-      const response = await request(`${api}/${encode(key)}?fields=updated`, { method: "GET" });
+    async head(key, signal) {
+      const response = await request(
+        `${api}/${encode(key)}?fields=updated`,
+        { method: "GET" },
+        signal,
+      );
       const object = (await response.json()) as { updated?: string };
+      signal?.throwIfAborted();
       return { key, lastModified: checkedDate(object.updated) };
     },
-    async *list(prefix) {
+    async *list(prefix, signal) {
       let cursor: string | undefined;
       do {
         const target = new URL(api);
         target.searchParams.set("prefix", prefix);
         target.searchParams.set("fields", "items(name,updated),nextPageToken");
         if (cursor) target.searchParams.set("pageToken", cursor);
-        const response = await request(target, { method: "GET" });
+        const response = await request(target, { method: "GET" }, signal);
         const page = (await response.json()) as {
           items?: { name: string; updated: string }[];
           nextPageToken?: string;
         };
+        signal?.throwIfAborted();
         for (const item of page.items ?? []) {
           yield { key: item.name, lastModified: checkedDate(item.updated) };
         }
@@ -350,8 +414,8 @@ function gcsStorage(config: Config, fetchImpl: typeof fetch): ObjectStore {
         cursor = page.nextPageToken;
       } while (cursor);
     },
-    async delete(key) {
-      const response = await request(`${api}/${encode(key)}`, { method: "DELETE" });
+    async delete(key, signal) {
+      const response = await request(`${api}/${encode(key)}`, { method: "DELETE" }, signal);
       await response.body?.cancel();
     },
   };
@@ -396,8 +460,20 @@ export function createR2Storage(
   signer: Pick<ObjectStore, "sign"> | ObjectStore["sign"],
 ): ObjectStore {
   return {
-    sign: typeof signer === "function" ? signer : signer.sign.bind(signer),
-    async put(key, content, metadata) {
+    async sign(key, expires, signal) {
+      signal?.throwIfAborted();
+      const result = await (typeof signer === "function" ? signer : signer.sign.bind(signer))(
+        key,
+        expires,
+        signal,
+      );
+      signal?.throwIfAborted();
+      return result;
+    },
+    async put(key, content, metadata, signal) {
+      signal?.throwIfAborted();
+      // R2 binding operations cannot be interrupted. Await settlement before
+      // reporting cancellation so artifact rollback cannot race a late upload.
       await bucket.put(key, content, {
         httpMetadata: {
           contentType: metadata["Content-Type"],
@@ -405,24 +481,31 @@ export function createR2Storage(
           contentDisposition: metadata["Content-Disposition"],
         },
       });
+      signal?.throwIfAborted();
     },
-    async head(key): Promise<StoredObject> {
+    async head(key, signal): Promise<StoredObject> {
+      signal?.throwIfAborted();
       const object = await bucket.head(key);
+      signal?.throwIfAborted();
       if (!object) throw missing();
       return { key, lastModified: object.uploaded };
     },
-    async *list(prefix) {
+    async *list(prefix, signal) {
       let cursor: string | undefined;
       do {
+        signal?.throwIfAborted();
         const result = await bucket.list({ prefix, ...(cursor ? { cursor } : {}) });
+        signal?.throwIfAborted();
         for (const object of result.objects)
           yield { key: object.key, lastModified: object.uploaded };
         if (result.truncated && (!result.cursor || result.cursor === cursor)) throw failure();
         cursor = result.truncated ? result.cursor : undefined;
       } while (cursor);
     },
-    async delete(key) {
+    async delete(key, signal) {
+      signal?.throwIfAborted();
       await bucket.delete(key);
+      signal?.throwIfAborted();
     },
   };
 }

@@ -3,7 +3,7 @@
 The maintained executable is:
 
 ```sh
-scripts/http_probe.py --python "$PWD/.venv/bin/python" --evidence-dir "$evidence/http"
+node scripts/http-probe.mjs --command "node $PWD/dist/node.mjs" --evidence "$evidence/http"
 ```
 
 `just offline` and `just package` invoke this same driver. It clears
@@ -24,7 +24,7 @@ silently use a real configured account:
 ```bash
 env -u ODOO_URL -u ODOO_DATABASE -u ODOO_DB -u ODOO_USERNAME -u ODOO_USER \
     -u ODOO_PASSWORD HOST=127.0.0.1 PORT="$port" \
-    .venv/bin/python -m godoo_mcp_server >"$evidence/server.log" 2>&1 &
+    node dist/node.mjs >"$evidence/server.log" 2>&1 &
 mcp_pid=$!
 base="http://127.0.0.1:$port"
 ```

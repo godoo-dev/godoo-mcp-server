@@ -12,7 +12,7 @@ Include the modern protocol/capabilities `_meta` envelope shown in the
 Responses can be JSON or SSE. Use a compatible SDK or the recipe's exact examples.
 
 Discover the connected server's schemas before calling it: other refs or deployed
-versions may differ. Python's injected `ctx` is not a consumer argument. The table
+versions may differ. The table
 follows this checkout's handlers; IDs are numeric Odoo IDs, `values` is a field-value
 object and domains use Odoo domain syntax. Optional `None` means omitted. `count`
 counts returned rows, not the total matching population.

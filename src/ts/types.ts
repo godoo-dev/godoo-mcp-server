@@ -13,11 +13,16 @@ export interface StoredObject {
   lastModified: Date;
 }
 export interface ObjectStore {
-  sign(key: string, expiresInSeconds: number): Promise<string>;
-  put(key: string, content: Uint8Array, metadata: Record<string, string>): Promise<void>;
-  head(key: string): Promise<StoredObject>;
-  list(prefix: string): AsyncIterable<StoredObject>;
-  delete(key: string): Promise<void>;
+  sign(key: string, expiresInSeconds: number, signal?: AbortSignal): Promise<string>;
+  put(
+    key: string,
+    content: Uint8Array,
+    metadata: Record<string, string>,
+    signal?: AbortSignal,
+  ): Promise<void>;
+  head(key: string, signal?: AbortSignal): Promise<StoredObject>;
+  list(prefix: string, signal?: AbortSignal): AsyncIterable<StoredObject>;
+  delete(key: string, signal?: AbortSignal): Promise<void>;
 }
 export interface Runtime {
   config: Config;
@@ -25,6 +30,7 @@ export interface Runtime {
   log?: (event: Record<string, unknown>) => void;
   fetch?: typeof fetch;
   now?: () => Date;
+  signal?: AbortSignal;
 }
 export interface Operation {
   client: OdooClient;

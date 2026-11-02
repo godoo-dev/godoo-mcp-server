@@ -68,33 +68,59 @@ def mcp_process_factory(tmp_path: Path, artifact_store) -> Callable[..., Any]:
         if image:
             command = [
                 "docker",
-                "run",
-                "--rm",
+                "create",
                 "--name",
                 container,
                 "--network",
                 "host",
-                "--volume",
-                f"{artifact_store.cert}:{artifact_store.cert}:ro",
             ]
             for key in [*artifact_store.environment, "HOST", "PORT"]:
-                command += ["--env", key]
+                command += [
+                    "--env",
+                    "NODE_EXTRA_CA_CERTS=/tmp/mcp-acceptance-ca.pem"
+                    if key == "NODE_EXTRA_CA_CERTS"
+                    else key,
+                ]
             command += [image]
         else:
             command = shlex.split(os.environ.get("MCP_SERVER_COMMAND", ""))
             if not command:
                 command = ["node", str(root / "dist" / "node.mjs")]
-        with log_path.open("wb") as log_file:
-            process = await asyncio.create_subprocess_exec(
-                *command,
-                cwd=root,
-                stdout=log_file,
-                stderr=log_file,
+
+        async def docker(*arguments):
+            result = await asyncio.to_thread(
+                subprocess.run,
+                ["docker", *arguments],
+                check=True,
+                capture_output=True,
+                text=True,
                 env=environment,
+                timeout=30,
             )
-            url = f"http://127.0.0.1:{port}"
-            handle = OwnedProcess(process, container)
+            return result.stdout.strip()
+
+        with log_path.open("wb") as log_file:
+            process = None
             try:
+                if image:
+                    await docker(*command[1:])
+                    # docker cp streams the certificate through the CLI, so the
+                    # daemon need not see the runner's filesystem (including act).
+                    await docker(
+                        "cp",
+                        str(artifact_store.cert),
+                        f"{container}:/tmp/mcp-acceptance-ca.pem",
+                    )
+                    command = ["docker", "start", "--attach", container]
+                process = await asyncio.create_subprocess_exec(
+                    *command,
+                    cwd=root,
+                    stdout=log_file,
+                    stderr=log_file,
+                    env=environment,
+                )
+                url = f"http://127.0.0.1:{port}"
+                handle = OwnedProcess(process, container)
                 async with AsyncClient(timeout=1) as client:
                     deadline = asyncio.get_running_loop().time() + 45
                     while asyncio.get_running_loop().time() < deadline:
@@ -108,6 +134,44 @@ def mcp_process_factory(tmp_path: Path, artifact_store) -> Callable[..., Any]:
                         await asyncio.sleep(0.1)
                     else:
                         raise AssertionError(f"MCP health check timed out: {log_path.read_text()}")
+                expected_version = os.environ.get("MCP_EXPECTED_VERSION")
+                if image:
+                    assert expected_version, "MCP_EXPECTED_VERSION is required for an image trial"
+                    expected_image = await docker("image", "inspect", "--format", "{{.Id}}", image)
+                    observed_image = await docker("inspect", "--format", "{{.Image}}", container)
+                    assert observed_image == expected_image, (
+                        "Running MCP image differs from candidate"
+                    )
+                    uid = int(await docker("exec", container, "id", "-u"))
+                    assert uid > 0, "The candidate MCP server must run as non-root"
+                    version = await docker("exec", container, "godoo-mcp-server", "--version")
+                    assert version == expected_version, "Running MCP version differs from candidate"
+                    record = {
+                        "expected_image": expected_image,
+                        "observed_image": observed_image,
+                        "container_id": await docker("inspect", "--format", "{{.Id}}", container),
+                        "uid": uid,
+                        "version": version,
+                    }
+                    facts = os.environ.get("MCP_IMAGE_FACTS")
+                    if facts:
+                        with Path(facts).open("a") as stream:
+                            stream.write(json.dumps(record) + "\n")
+                    print("MCP_IMAGE_PROOF", json.dumps(record), flush=True)
+                elif expected_version:
+                    version_process = await asyncio.create_subprocess_exec(
+                        *command,
+                        "--version",
+                        cwd=root,
+                        env=environment,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    stdout, _stderr = await asyncio.wait_for(
+                        version_process.communicate(), timeout=15
+                    )
+                    assert version_process.returncode == 0
+                    assert stdout.decode().strip() == expected_version
                 yield url, log_path, handle
             finally:
                 if container:
@@ -117,7 +181,7 @@ def mcp_process_factory(tmp_path: Path, artifact_store) -> Callable[..., Any]:
                         capture_output=True,
                         timeout=15,
                     )
-                if process.returncode is None:
+                if process is not None and process.returncode is None:
                     process.terminate()
                     try:
                         await asyncio.wait_for(process.wait(), timeout=5)
@@ -137,7 +201,10 @@ class OwnedProcess:
     def kill(self):
         if self.container:
             subprocess.run(
-                ["docker", "kill", self.container], check=True, capture_output=True, timeout=15
+                ["docker", "kill", self.container],
+                check=True,
+                capture_output=True,
+                timeout=15,
             )
         else:
             self.process.kill()
@@ -147,7 +214,9 @@ class OwnedProcess:
 
 
 @pytest_asyncio.fixture(loop_scope="session")
-async def mcp_process(mcp_process_factory: Callable[..., Any]) -> AsyncGenerator[tuple[str, Path]]:
+async def mcp_process(
+    mcp_process_factory: Callable[..., Any],
+) -> AsyncGenerator[tuple[str, Path]]:
     async with mcp_process_factory() as (url, log_path, _process):
         yield url, log_path
 

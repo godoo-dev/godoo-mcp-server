@@ -1,20 +1,8 @@
 # godoo-mcp-server
 
-## Proposed TypeScript runtime (migration in progress)
-
-The next runtime uses a shared TypeScript MCP core with Node and native Cloudflare
-Workers entrypoints. The existing Python implementation remains the behavioral
-reference until external HTTP acceptance, disposable Odoo 18/19 and both runtime
-adapters pass. The proposed Node commands are `pnpm install --frozen-lockfile`,
-`pnpm build` and `HOST=127.0.0.1 PORT=8000 pnpm start`. A packaged installation will
-provide the same `godoo-mcp-server` command. Workers will use a Wrangler configuration
-with R2 bindings and a scheduled cleanup handler. MCP paths, caller credentials,
-tool arguments, guidance and private download receipts retain their current contracts.
-No publication or deployment is part of the migration.
-
 Operational MCP access to Odoo through record, discovery, chatter, activity,
 action, attachment, general model-method and user tools, plus bundled workflow
-guidance. The Python server uses the godoo client and each caller's Odoo permissions.
+guidance. The TypeScript server uses `@godoo-dev/client` and each caller's Odoo permissions.
 
 This is the operational Odoo MCP. Odoo Atlas provides a separate read-only
 knowledge MCP. `godoo-proxy` owns the broader commercial OAuth/SSO gateway.
@@ -26,17 +14,18 @@ organization overview.
 
 ## Run from source
 
-Use Python 3.14+ and `uv`. From the checkout root:
+Use Node 24+ and pnpm 11.1.3. From the checkout root:
 
 ```sh
-uv sync --frozen --all-groups
-HOST=127.0.0.1 PORT=8000 uv run godoo-mcp-server
+pnpm install --frozen-lockfile
+pnpm build
+HOST=127.0.0.1 PORT=8000 pnpm start
 ```
 
 The Streamable HTTP endpoint is `/mcp`; `/healthz` is an unauthenticated health
 check. Supply Odoo credentials on each MCP request, or set the environment
 variables below before starting the server. The CLI also accepts `--version`.
-Package installation uses `pip install godoo-mcp-server`; confirm the selected
+Package installation uses `npm install -g @godoo-dev/mcp-server`; confirm the selected
 published version separately from this checkout.
 
 ## Credentials and network boundary
@@ -58,10 +47,29 @@ fallback credentials. Restrict ingress to trusted callers; a managed gateway mus
 enforce identity and replace caller-supplied credential headers.
 
 `HOST` defaults to `0.0.0.0` and `PORT` to `8000`. The [Dockerfile](Dockerfile)
-installs the candidate wheel and runs as a non-root user. Use the
+installs the candidate npm tarball and runs as a non-root user. Use the
 [native candidate checks](docs/development.md#native-candidate-checks) to prepare its
 build context. Its health check probes port 8000;
 configure a matching probe when overriding the container port.
+
+## Native Cloudflare Workers
+
+`dist/worker.mjs` uses native Web APIs without `nodejs_compat`. The checked-in
+`wrangler.jsonc` selects that bundle, enables incoming request cancellation and
+configures a minute-based scheduled cleanup handler. Build with `pnpm build`;
+use `pnpm exec wrangler dev` for local development. Before an authorized deployment,
+set the account-specific R2 bucket and endpoint, and supply secrets through Wrangler.
+No deployment is performed by the build or CI.
+Workers can detect a disconnected quiet SSE caller on the next heartbeat
+(up to 15 seconds); the operation timeout remains a separate upper bound.
+
+The `EXPORTS` R2 binding handles native object operations. Download URLs still
+need `ODOO_EXPORT_BUCKET`, `ODOO_EXPORT_ENDPOINT`, `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY`: an R2 binding alone cannot issue external signed URLs.
+Workers accepts string configuration through its bindings; use
+`GOOGLE_SERVICE_ACCOUNT_KEY` rather than a mounted file for GCS. Node additionally
+supports the AWS default credential provider chain and mounted GCS key files.
+Choose S3 or GCS explicitly to use those providers even when an R2 binding remains.
 
 ## Configure artifact storage
 
@@ -77,7 +85,7 @@ results need no storage; an oversized result without working storage fails safel
 a signed URL and file metadata instead of inline base64. It uses the same timing
 settings and fails safely when storage is unavailable.
 
-For the current **Cloudflare R2** deployment:
+For **Cloudflare R2** storage:
 
 ```sh
 export ODOO_EXPORT_PROVIDER=r2
@@ -86,7 +94,7 @@ export ODOO_EXPORT_ENDPOINT=https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com
 export ODOO_EXPORT_URL_TTL_MINUTES=60
 export ODOO_EXPORT_CLEANUP_GRACE_MINUTES=30
 # Supply AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY through deployment secrets.
-uv run godoo-mcp-server
+godoo-mcp-server
 ```
 
 Create a private bucket and a bucket-scoped R2 S3 API key with object read/write,
@@ -104,7 +112,7 @@ endpoint. Downloads must be reachable from the caller's calculation environment.
 
 The timing settings are optional: URL lifetime defaults to **60 minutes** and
 cleanup grace to **30 minutes**. Objects become eligible for deletion after
-**90 minutes** by default; the server sweeps every minute and resumes after restart.
+**90 minutes** by default; Node sweeps every minute and resumes after restart; Workers uses the configured scheduled trigger.
 URLs are reusable bearer links until expiry. Expiring a URL does not delete its
 object. See [private result delivery](docs/exports.md) for permissions, cleanup
 limits and download examples.

@@ -32,7 +32,7 @@ execFileSync(
   { stdio: "ignore" },
 );
 const bundled = await build({
-  entryPoints: ["tests/r2/s3.mjs"],
+  entryPoints: ["scripts/r2-adapter.mjs"],
   bundle: true,
   format: "esm",
   write: false,

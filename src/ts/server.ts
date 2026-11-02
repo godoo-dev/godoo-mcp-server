@@ -4,6 +4,7 @@ import {
   OdooClient,
   OdooNetworkError,
   OdooProtocolError,
+  OdooSafetyError,
   OdooTimeoutError,
   OdooValidationError,
 } from "@godoo-dev/client";
@@ -49,6 +50,8 @@ function safeError(
     return new PublicError("Odoo authentication failed", "auth_failed");
   if (error instanceof OdooAccessError)
     return new PublicError("Odoo access denied", "access_denied");
+  if (error instanceof OdooSafetyError)
+    return new PublicError("Odoo operation was not approved", "write_not_approved");
   if (error instanceof OdooValidationError)
     return new PublicError("Odoo rejected the request", "odoo_rejected");
   if (state.write)
@@ -90,15 +93,17 @@ export async function withOperation<T>(
   try {
     await client.authenticate();
     state.authenticated = true;
-    return await callback({
+    const value = await callback({
       client,
       creds,
-      runtime,
+      runtime: { ...runtime, signal },
       signal,
       markWrite: () => {
         state.write = true;
       },
     });
+    signal.throwIfAborted();
+    return value;
   } catch (error) {
     throw safeError(error, state);
   } finally {
@@ -291,13 +296,6 @@ export function createHandler(runtime: Runtime) {
     close: () => handler.close(),
     async fetch(request: Request): Promise<Response> {
       const url = new URL(request.url);
-      if (url.pathname === "/healthz") return Response.json({ status: "ok" });
-      const credentials = resolveCredentials(request, runtime);
-      if (Array.isArray(credentials))
-        return Response.json(
-          { error: "missing_credentials", missing: credentials },
-          { status: 401 },
-        );
       const supplied = request.headers.get("x-request-id") || "";
       const requestId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         supplied,
@@ -306,14 +304,43 @@ export function createHandler(runtime: Runtime) {
         : crypto.randomUUID();
       const headers = new Headers(request.headers);
       headers.set("x-request-id", requestId);
+      const exchange = new AbortController();
+      const signal = AbortSignal.any([request.signal, exchange.signal]);
       let response: Response;
-      if (url.pathname === "/mcp/")
+      const credentials = resolveCredentials(request, runtime);
+      if (url.pathname === "/healthz") response = Response.json({ status: "ok" });
+      else if (Array.isArray(credentials))
+        response = Response.json(
+          { error: "missing_credentials", missing: credentials },
+          { status: 401 },
+        );
+      else if (url.pathname === "/mcp/")
         response = new Response(null, { status: 307, headers: { location: "/mcp" } });
       else if (url.pathname !== "/mcp") response = new Response("Not Found", { status: 404 });
-      else response = await handler.fetch(new Request(request, { headers }));
+      else response = await handler.fetch(new Request(request, { headers, signal }));
       const responseHeaders = new Headers(response.headers);
       responseHeaders.set("x-request-id", requestId);
-      return new Response(response.body, {
+      const reader = response.body?.getReader();
+      const body = reader
+        ? new ReadableStream<Uint8Array>({
+            async pull(controller) {
+              try {
+                const chunk = await reader.read();
+                if (chunk.done) controller.close();
+                else controller.enqueue(chunk.value);
+              } catch (error) {
+                controller.error(error);
+              }
+            },
+            async cancel(reason) {
+              // Workers can cancel the response stream without aborting the
+              // incoming Request. Stop the same operation's upstream RPCs.
+              exchange.abort(reason);
+              await reader.cancel(reason).catch(() => undefined);
+            },
+          })
+        : null;
+      return new Response(body, {
         status: response.status,
         statusText: response.statusText,
         headers: responseHeaders,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createHandler, protocolVersion } from "../../src/ts/server.js";
 import contracts from "../../src/ts/tool-contracts.json" with { type: "json" };
+import type { ObjectStore } from "../../src/ts/types.js";
 
 const credentials = {
   "X-Odoo-Url": "https://private.example",
@@ -164,5 +165,92 @@ describe("public MCP contract", () => {
     expect(signal?.aborted).toBe(true);
     await response.body?.cancel();
     await handler.close();
+  });
+
+  it.each([
+    "caller",
+    "response",
+  ])("rolls back an upload that commits after %s cancellation and records no success", async (cancellation) => {
+    const controller = new AbortController();
+    let start: (() => void) | undefined;
+    let release: (() => void) | undefined;
+    let finish: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      start = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const objects = new Set<string>();
+    const events: Record<string, unknown>[] = [];
+    let uploadSignal: AbortSignal | undefined;
+    let cleanupSignal: AbortSignal | undefined;
+    const store: ObjectStore = {
+      sign: async () => "https://private.test/owned-export",
+      async put(key, _content, _metadata, signal) {
+        uploadSignal = signal;
+        start?.();
+        // Native R2 does not accept a signal: cancellation must wait until
+        // this late commit settles, then remove only the invocation's key.
+        await held;
+        objects.add(key);
+      },
+      head: async (key) => ({ key, lastModified: new Date() }),
+      async *list() {},
+      async delete(key, signal) {
+        cleanupSignal = signal;
+        signal?.throwIfAborted();
+        objects.delete(key);
+      },
+    };
+    const handler = createHandler({
+      config: {},
+      storage: store,
+      log(event) {
+        events.push(event);
+        if (event.event === "tool_call_finished") finish?.();
+      },
+      fetch: async (_input, init) => {
+        const body = JSON.parse(String(init?.body));
+        return Response.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: body.params.service === "common" ? 2 : [{ id: 1, name: "Private row" }],
+        });
+      },
+    });
+    try {
+      const response = await handler.fetch(
+        new Request(
+          rpcRequest("tools/call", {
+            name: "record_read",
+            arguments: { model: "res.partner", ids: [1], max_return_bytes: 0 },
+          }),
+          { signal: controller.signal },
+        ),
+      );
+      await started;
+      if (cancellation === "caller") controller.abort();
+      else await response.body?.cancel();
+      expect(uploadSignal?.aborted).toBe(true);
+      release?.();
+      await finished;
+      expect(objects.size).toBe(0);
+      expect(cleanupSignal).toBeInstanceOf(AbortSignal);
+      expect(cleanupSignal).not.toBe(uploadSignal);
+      expect(cleanupSignal?.aborted).toBe(false);
+      expect(events.find((event) => event.event === "tool_call_finished")).toMatchObject({
+        outcome: "error",
+        category: "export_failed",
+      });
+      expect(JSON.stringify(events)).not.toContain("Private row");
+      if (cancellation === "caller") await response.body?.cancel();
+    } finally {
+      release?.();
+      await handler.close();
+    }
   });
 });
