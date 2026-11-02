@@ -43,10 +43,22 @@ const emulator = new Miniflare({
   https: true,
   httpsKey: await readFile(key, "utf8"),
   httpsCert: await readFile(cert, "utf8"),
-  modules: true,
-  script: bundled.outputFiles[0].text,
-  compatibilityDate: "2026-07-30",
-  r2Buckets: { BUCKET: "private-exports" },
+  workers: [
+    {
+      config: {
+        name: "r2-acceptance",
+        compatibilityDate: "2026-11-02",
+        manifest: {
+          mainModule: "s3.mjs",
+          modules: { "s3.mjs": { type: "esm", contents: bundled.outputFiles[0].text } },
+        },
+        env: { BUCKET: { type: "r2", name: "private-exports" } },
+      },
+    },
+  ],
+  enableDevRegistry: false,
+  logRequests: false,
+  telemetry: { enabled: false },
   cf: false,
 });
 console.log(JSON.stringify({ endpoint: (await emulator.ready).origin, cert }));
