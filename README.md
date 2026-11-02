@@ -1,5 +1,17 @@
 # godoo-mcp-server
 
+## Proposed TypeScript runtime (migration in progress)
+
+The next runtime uses a shared TypeScript MCP core with Node and native Cloudflare
+Workers entrypoints. The existing Python implementation remains the behavioral
+reference until external HTTP acceptance, disposable Odoo 18/19 and both runtime
+adapters pass. The proposed Node commands are `pnpm install --frozen-lockfile`,
+`pnpm build` and `HOST=127.0.0.1 PORT=8000 pnpm start`. A packaged installation will
+provide the same `godoo-mcp-server` command. Workers will use a Wrangler configuration
+with R2 bindings and a scheduled cleanup handler. MCP paths, caller credentials,
+tool arguments, guidance and private download receipts retain their current contracts.
+No publication or deployment is part of the migration.
+
 Operational MCP access to Odoo through record, discovery, chatter, activity,
 action, attachment, general model-method and user tools, plus bundled workflow
 guidance. The Python server uses the godoo client and each caller's Odoo permissions.

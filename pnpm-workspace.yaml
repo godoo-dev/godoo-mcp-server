@@ -1,0 +1,12 @@
+allowBuilds:
+  cpu-features: false
+  esbuild: true
+  protobufjs: false
+  ssh2: false
+  workerd: true
+minimumReleaseAgeExclude:
+  - '@cloudflare/workers-types@5.20261102.1'
+  - miniflare@5.20261101.0-beta
+  - wrangler@4.156.1
+patchedDependencies:
+  '@godoo-dev/client@0.8.0': patches/@godoo-dev__client@0.8.0.patch

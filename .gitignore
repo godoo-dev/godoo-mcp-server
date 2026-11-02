@@ -12,3 +12,5 @@ htmlcov/
 .odoo-testcontainers/
 dist/
 node_modules/
+.wrangler/
+coverage/
