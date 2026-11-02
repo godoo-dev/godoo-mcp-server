@@ -16,15 +16,18 @@ await build({
   ...common,
   entryPoints: ["src/ts/server.ts"],
   outfile: "dist/index.mjs",
-  platform: "neutral",
-  mainFields: ["module", "main"],
+  platform: "browser",
+  conditions: ["browser"],
+  mainFields: ["browser", "module", "main"],
 });
 await build({
   ...common,
   entryPoints: ["src/ts/node.ts"],
   outfile: "dist/node.mjs",
   platform: "node",
-  banner: { js: "#!/usr/bin/env node" },
+  banner: {
+    js: "#!/usr/bin/env node\nimport { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+  },
 });
 await build({
   ...common,

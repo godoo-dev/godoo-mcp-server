@@ -1,0 +1,1136 @@
+{
+  "guidance_get": {
+    "name": "guidance_get",
+    "title": "Guidance Get",
+    "description": "Read bundled Odoo guidance before using Odoo tools. Defaults to the skills index; select a listed path for detailed guidance. Also available via skill://odoo/{path} resources. Guidance does not grant write approval or override client policy.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "default": "SKILL.md",
+          "enum": [
+            "SKILL.md",
+            "base/properties.md",
+            "base/field-types.md",
+            "base/queries.md",
+            "base/record-changes.md",
+            "base/dynamic-properties.md",
+            "mail/chatter.md",
+            "mail/activities.md"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "properties": {
+        "result": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object",
+      "x-fastmcp-wrap-result": true
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "action_list_actions": {
+    "name": "action_list_actions",
+    "title": "Action List Actions",
+    "description": "List available Odoo actions from ir.actions.server and ir.actions.act_window. Each result is tagged with action_type='server' or action_type='window'. domain: optional Odoo domain filter applied to each model independently. limit: max results per action model (default 80). Returns combined list.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "domain": {
+          "anyOf": [
+            {
+              "items": {},
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 80,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "action_execute_action": {
+    "name": "action_execute_action",
+    "title": "Action Execute Action",
+    "description": "Execute an ir.actions.server action by its id. Calls the 'run' method on ir.actions.server with the given action_id. Returns the action result dict (or empty dict if the action returns None). action_id: numeric id of the ir.actions.server record to execute.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "action_id"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "attachments_list": {
+    "name": "attachments_list",
+    "title": "Attachments List",
+    "description": "List ir.attachment records. Optionally filter by res_model and/or res_id to get attachments for a specific record. domain: additional Odoo domain filter (merged with model/id filters). res_model: Odoo model name to filter by. res_id: numeric record id to filter by. limit: max results (default 80).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "domain": {
+          "anyOf": [
+            {
+              "items": {},
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 80,
+          "type": "integer"
+        },
+        "res_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "res_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "attachments_upload": {
+    "name": "attachments_upload",
+    "title": "Attachments Upload",
+    "description": "Upload a file as an ir.attachment linked to an Odoo record. name: filename for the attachment. content_base64: base64-encoded file content. res_model: Odoo model name of the linked record. res_id: numeric id of the linked record. mimetype: MIME type (default 'application/octet-stream'). Returns the new attachment id.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "content_base64": {
+          "type": "string"
+        },
+        "res_model": {
+          "type": "string"
+        },
+        "res_id": {
+          "type": "integer"
+        },
+        "mimetype": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "name",
+        "content_base64",
+        "res_model",
+        "res_id"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "attachments_download": {
+    "name": "attachments_download",
+    "title": "Attachments Download",
+    "description": "Download an ir.attachment by id through a private signed URL. Returns filename, MIME type, byte size, SHA-256 and expiry/cleanup metadata; never returns binary content or base64. Requires configured artifact storage. Odoo is only read; delivery creates a temporary stored copy. If the attachment has no binary content (empty datas field), returns an error dict. attachment_id: numeric id of the ir.attachment record.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "attachment_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attachment_id"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "discovery_list_models": {
+    "name": "discovery_list_models",
+    "title": "Discovery List Models",
+    "description": "List up to 500 accessible Odoo models (technical name, label, description). Use discovery_get_fields to inspect a model's fields before operating on it.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "discovery_get_fields": {
+    "name": "discovery_get_fields",
+    "title": "Discovery Get Fields",
+    "description": "Return field metadata for an Odoo model. Includes type, label, required, readonly, help text, and relational target model. Pass record_id for friendly property names and allowed choices, or property_field + parent_id before a child record exists. Properties are scoped to their definition parent.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "attributes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "record_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "property_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "discovery_list_menus": {
+    "name": "discovery_list_menus",
+    "title": "Discovery List Menus",
+    "description": "List Odoo application menus (ir.ui.menu). Returns menu entries ordered by sequence. Use domain to filter by parent or action type.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "domain": {
+          "anyOf": [
+            {
+              "items": {},
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 80,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "mail_post_message": {
+    "name": "mail_post_message",
+    "title": "Mail Post Message",
+    "description": "Post a message to any Odoo record's chatter (mail.thread mixin). Calls message_post on the given model/res_id. model: Odoo model name (e.g. 'res.partner'). res_id: numeric record id. body: message content. body_format: md (default), html or txt. Markdown becomes basic Odoo HTML; txt preserves literal text; Odoo sanitizes HTML. is_internal: True selects the internal-note subtype, intended for internal audiences. partner_ids: res.partner IDs to notify, not res.users IDs; resolve users' partner_id. Explicit recipients do not exclude followers or other Odoo notification behavior. Posting does not guarantee email delivery or a particular visibility policy. attachment_ids: list of existing ir.attachment ids to link. Returns message_id. A lost write reply needs readback before retry. Denial stops the call.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "res_id": {
+          "type": "integer"
+        },
+        "body": {
+          "type": "string"
+        },
+        "is_internal": {
+          "default": false,
+          "type": "boolean"
+        },
+        "partner_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "attachment_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "body_format": {
+          "default": "md",
+          "enum": [
+            "md",
+            "html",
+            "txt"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "res_id",
+        "body"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "mail_log_note": {
+    "name": "mail_log_note",
+    "title": "Mail Log Note",
+    "description": "Post an internal note on any Odoo record's chatter. Calls message_post with is_internal=True and subtype_xmlid='mail.mt_note'. model: Odoo model name. res_id: numeric record id. body: note content. body_format: md (default), html or txt. Markdown becomes basic Odoo HTML; txt preserves literal text; Odoo sanitizes HTML. No recipient-list input; use mail_post_message(is_internal=True) for explicit partners. Intended for internal audiences; Odoo controls visibility and notifications. Does not guarantee zero emails. Returns message_id. A lost write reply needs readback before retry; denial stops the call.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "res_id": {
+          "type": "integer"
+        },
+        "body": {
+          "type": "string"
+        },
+        "body_format": {
+          "default": "md",
+          "enum": [
+            "md",
+            "html",
+            "txt"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "res_id",
+        "body"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "mail_list_messages": {
+    "name": "mail_list_messages",
+    "title": "Mail List Messages",
+    "description": "List chatter messages for an Odoo record. Calls search_read on mail.message with domain filtered by model and res_id. Returns messages ordered by date descending. model: Odoo model name. res_id: numeric record id. limit: max messages to return (default 80). offset: pagination offset.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "res_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 80,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model",
+        "res_id"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "mail_schedule_activity": {
+    "name": "mail_schedule_activity",
+    "title": "Mail Schedule Activity",
+    "description": "Schedule an activity on any Odoo record. Calls activity_schedule on the mail.activity.mixin. model: Odoo model name. res_id: numeric record id. activity_type_id: numeric id from this instance's mail.activity.type records. date_deadline: due date in YYYY-MM-DD format. note: optional activity note. user_id: optional assignee user id.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "res_id": {
+          "type": "integer"
+        },
+        "activity_type_id": {
+          "type": "integer"
+        },
+        "date_deadline": {
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "model",
+        "res_id",
+        "activity_type_id",
+        "date_deadline"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "mail_list_activities": {
+    "name": "mail_list_activities",
+    "title": "Mail List Activities",
+    "description": "List pending activities for an Odoo record. Calls search_read on mail.activity filtered by model and res_id. model: Odoo model name. res_id: numeric record id. limit: max activities to return (default 80).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "res_id": {
+          "type": "integer"
+        },
+        "limit": {
+          "default": 80,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model",
+        "res_id"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "mail_mark_activity_done": {
+    "name": "mail_mark_activity_done",
+    "title": "Mail Mark Activity Done",
+    "description": "Mark an activity as done with optional feedback. Calls action_feedback on mail.activity. activity_id: numeric id of the activity to complete. feedback: optional feedback text posted to the chatter.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "activity_id": {
+          "type": "integer"
+        },
+        "feedback": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "required": [
+        "activity_id"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "model_call": {
+    "name": "model_call",
+    "title": "Model Call",
+    "description": "Call a method on any installed Odoo model using the caller's credentials. model and method are technical names; args is the native positional argument array and kwargs is the keyword argument object. Omitted/null args and kwargs default to [] and {}. Pass Odoo context inside kwargs.context as an object. Recordset methods commonly take an ID list as the first positional argument, e.g. args=[[42]]. Returns result containing the unchanged native JSON value; returned actions are not executed. Methods can read, change or delete data and cause external effects: know the method contract and obtain authority for its effects. This tool adds no confirmation mechanism or privilege elevation. The client's existing safety guard is retained; no safetyLevel override. Do not retry automatically after an unknown outcome; inspect actual state first.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "method": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "args": {
+          "anyOf": [
+            {
+              "items": {},
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "kwargs": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "model",
+        "method"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "record_search": {
+    "name": "record_search",
+    "title": "Record Search",
+    "description": "Search records of any Odoo model using a domain filter. Returns matching records with the requested fields in a single call. domain uses raw Odoo domain syntax: list of triples, e.g. [['active','=',True]]. Pagination: pass limit + offset. Default limit=80. Use a bounded positive integer limit. max_return_bytes defaults to 500 UTF-8 JSON bytes: larger results return only a private JSON artifact receipt with a signed URL (default 60 minutes). Set 0 to force artifact delivery, null to return the full result inline. Odoo is only read; artifact delivery creates a temporary stored copy. Select friendly properties with fields such as properties.task_properties.priority. The same path and friendly choices work in domain predicates constrained to one definition parent. Property filtering happens before pagination.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "domain": {
+          "anyOf": [
+            {
+              "items": {},
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 80,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        },
+        "order": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "max_return_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 500
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "record_read": {
+    "name": "record_read",
+    "title": "Record Read",
+    "description": "Read fields of specific records by id list. max_return_bytes defaults to 500 UTF-8 JSON bytes: larger results return only a private JSON artifact receipt with a signed URL (default 60 minutes). Set 0 to force artifact delivery, null to return the full result inline. Odoo is only read; artifact delivery creates a temporary stored copy. Select properties.<container> or properties.<container>.<name> for friendly names and choice values discovered through discovery_get_fields.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "ids": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "max_return_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 500
+        }
+      },
+      "required": [
+        "model",
+        "ids"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "record_create": {
+    "name": "record_create",
+    "title": "Record Create",
+    "description": "Create one record from ordinary values and optional properties, using {container: {friendly_name: value}} and discovered friendly choices. Supply each container's positive definition-parent ID in values. Omitted properties retain Odoo defaults; null clears. Do not mix raw containers with friendly properties. All properties are preflighted before one create. Returns id and web_url. Never retry an unknown write automatically.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "values": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "properties": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "model",
+        "values"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "record_update": {
+    "name": "record_update",
+    "title": "Record Update",
+    "description": "Update ordinary fields through values. For one record, properties accepts {container: {friendly_name: value}} sparse changes using discovered names and choices. Omitted properties remain unchanged; null clears. Lists replace that property's selected values. Mixed values/properties use one write. Read/merge/write is non-atomic against concurrent edits. Never retry an unknown write automatically.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "ids": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "values": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "properties": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "model",
+        "ids"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "record_delete": {
+    "name": "record_delete",
+    "title": "Record Delete",
+    "description": "Delete records by id list.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "ids": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "model",
+        "ids"
+      ],
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "users_whoami": {
+    "name": "users_whoami",
+    "title": "Users Whoami",
+    "description": "Return the authenticated Odoo user identity and configured target URL. username is the Odoo login value from the X-Odoo-Username header. URL and database are connection context, not a test/production classification.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  },
+  "users_search_users": {
+    "name": "users_search_users",
+    "title": "Users Search Users",
+    "description": "Search Odoo users by domain filter. Returns res.users records. Default fields: id, name, login, active, share.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "domain": {
+          "anyOf": [
+            {
+              "items": {},
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 80,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "outputSchema": {
+      "additionalProperties": true,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true
+    },
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    }
+  }
+}
