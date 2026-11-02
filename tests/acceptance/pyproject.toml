@@ -1,0 +1,21 @@
+[project]
+name = "godoo-mcp-acceptance"
+version = "0.0.0"
+requires-python = ">=3.14"
+dependencies = [
+  "fastmcp==4.1.4",
+  "godoo-client==0.4.0",
+  "godoo-testcontainers==0.3.0",
+  "httpx>=0.28,<1",
+  "pytest>=9,<10",
+  "pytest-asyncio>=1.4,<2",
+  "uvicorn>=0.40,<1",
+  "starlette>=1.0.1,<2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+testpaths = ["."]
+addopts = "--tb=short"
+markers = ["integration: requires owned disposable Odoo/PostgreSQL containers"]

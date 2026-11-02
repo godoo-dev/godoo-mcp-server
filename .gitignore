@@ -12,3 +12,6 @@ htmlcov/
 .odoo-testcontainers/
 dist/
 node_modules/
+.pnpm-store/
+.wrangler/
+coverage/

@@ -20,8 +20,8 @@ purpose; a topic Markdown file does not need separate skill frontmatter.
 Resolve these paths from the checkout root. Check the current implementation,
 not predecessor CLI examples:
 
-- `src/godoo_mcp_server/tools/`: actual tool arguments, defaults, results and errors.
-- `src/godoo_mcp_server/resources.py`: `_SKILL_TOPICS`, discovery index, resource and `guidance_get` routes.
+- `src/ts/tools.ts`: actual tool arguments, defaults, results and errors.
+- `src/ts/guidance.ts`: topic manifest, discovery index, resource and `guidance_get` routes.
 - `tests/`: existing contract checks and disposable Odoo journeys.
 - `src/godoo_mcp_server/skills/PROVENANCE.md`: upstream source pins, licenses and adopted/deferred scope.
 
@@ -47,7 +47,7 @@ steps in MCP terms, with supported tool calls and concrete interpretation of
 results. Include only relevant prerequisites, ambiguity handling and stopping
 conditions. Avoid host paths, CLI prerequisites and repository authoring machinery.
 
-For a new topic, update `_SKILL_TOPICS` in `resources.py` and its link in the bundle
+For a new topic, update the topic manifest in `src/ts/guidance.ts` and its link in the bundle
 entrypoint. The manifest drives loading, discovery metadata and the tool path enum;
 file creation alone does not expose a topic. Preserve existing resource paths.
 For a separate skill entrypoint, inspect and update the discovery index explicitly;
@@ -70,7 +70,7 @@ resource restrictions and evidence handling. Select proof for the changed claim:
 - **Structure and delivery:** run skill-creator's `quick_validate.py` on the bundle
   entrypoint directory (resolve the script from the installed creator). Check
   relative links and changed topic paths. Run
-  `uv run --frozen pytest tests/test_guidance_feedback.py tests/test_resources.py --tb=short`.
+  `pnpm build && pnpm exec vitest run tests/ts/server.test.ts tests/ts/worker.test.ts`.
   Follow the verifier's lightweight real-HTTP recipe for changed delivery routes:
   retrieve the affected topic through resource and tool paths and compare contents.
   These checks prove availability, not correct workflow decisions.
@@ -80,21 +80,19 @@ resource restrictions and evidence handling. Select proof for the changed claim:
   give it the request and served artifacts without the intended call sequence.
   A fictional dry run proves only the proposed decisions, not Odoo execution.
 - **Odoo effects:** use the existing integration fixtures in
-  `tests/integration/conftest.py` and journeys in `test_vertical.py`. Extend a relevant
+  `tests/acceptance/conftest.py` and journeys in `test_vertical.py`. Extend a relevant
   journey or add a focused one when the guidance introduces a consequential claim
   not already exercised. Use MCP calls for the recipe and independent harness
   readback for outcomes: e.g. adding one relation preserves an existing relation,
   a bounded query selects the seeded records, or a message has the intended
   recipients. Seed owned disposable records, retain relevant before/after evidence,
   and let fixtures discard the containers. Use fixture IDs, never live-record IDs.
-  Run `uv run --frozen pytest -m integration tests/integration/test_vertical.py`
+  Run `uv run --project tests/acceptance --frozen pytest --confcutdir tests/acceptance tests/acceptance/test_vertical.py`
   with `-k '<selected test>' --tb=short` when resources permit, or inspect
   exact-revision remote CI logs. The selection must name an
   actual test; the generic CRUD journey does not validate every guidance topic.
 - **Packaging/client:** changed package content must remain covered by the CI
-  installed-wheel checks; image execution follows the existing verifier. The
-  opt-in `test_agent_write_flow.py` names `record_create` directly: it proves that
-  client's write path, not that it discovered or followed guidance. Actual guidance
+  installed-package checks; image execution follows the existing verifier. Actual guidance
   adoption requires a bounded client trial retrieving the topic, a realistic request
   without the answer supplied, and independent outcome readback. Keep model calls
   within current authority; no automatic billable trials or client-policy bypass.

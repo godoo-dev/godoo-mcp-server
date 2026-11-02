@@ -4,18 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Immutable v<metadata-version> tag reachable from main
+        description: Immutable v<package-version> tag reachable from main
         required: true
         type: string
       publish:
-        description: Publish the same-run tested wheel and image (protected environment)
+        description: Publish the same-run tested npm package and image
         type: boolean
         default: false
-      registry:
-        description: Package registry (both choices publish when enabled)
-        type: choice
-        options: [pypi, testpypi]
-        default: pypi
 
 permissions:
   contents: read
@@ -35,29 +30,15 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          python-version: '3.14.8'
+          node-version: '24.22.2'
       - name: Resolve eligible immutable tag before validation or credentials
         id: identity
         env:
           RELEASE_TAG: ${{ inputs.tag }}
           DISPATCH_REF: ${{ github.ref }}
-        run: |
-          python - <<'PY'
-          import os, re, subprocess
-          tag = os.environ['RELEASE_TAG']
-          if os.environ['DISPATCH_REF'] != 'refs/heads/main':
-              raise SystemExit('Dispatch the release workflow from main')
-          if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:[a-zA-Z0-9.+-]*)', tag):
-              raise SystemExit('Expected an immutable v<version> tag')
-          ref = 'refs/tags/' + tag
-          sha = subprocess.check_output(['git', 'rev-parse', ref + '^{commit}'], text=True).strip()
-          subprocess.run(['git', 'checkout', '--detach', sha], check=True)
-          subprocess.run(['python', 'scripts/candidate.py', 'release-ref', '--ref', ref], check=True)
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write(f'sha={sha}\nref={ref}\n')
-          PY
+        run: node scripts/candidate.mjs resolve-release
 
   validation:
     needs: eligibility
@@ -69,32 +50,35 @@ jobs:
   preflight:
     needs: [eligibility, validation]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ needs.eligibility.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          python-version: '3.14.8'
+          node-version: '24.22.2'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: tested-candidate
-          path: ${{ runner.temp }}/candidate
-      - name: Reject mismatched source/ref/version/wheel/archive and loaded image
+          path: ${{ runner.temp }}/proof
+      - name: Verify exact candidate and reconcile both registries before writes
         env:
           RELEASE_REF: ${{ needs.eligibility.outputs.ref }}
-        run: |
-          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --complete --release-ref "$RELEASE_REF"
-          docker load --input "$RUNNER_TEMP/candidate/image.tar"
-          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --complete --release-ref "$RELEASE_REF" --loaded-image
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_REPOSITORY: ${{ github.repository }}
+        run: node scripts/candidate.mjs preflight --directory "$RUNNER_TEMP/proof/candidate" --release-ref "$RELEASE_REF"
 
   promote:
     if: ${{ inputs.publish == true }}
     needs: [eligibility, validation, preflight]
     runs-on: ubuntu-latest
-    environment: ${{ inputs.registry }}
+    environment: npm
     permissions:
       contents: read
       id-token: write
@@ -105,45 +89,17 @@ jobs:
           ref: ${{ needs.eligibility.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
-          version: '0.12.5'
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
-        with:
-          python-version: '3.14.8'
+          node-version: '24.22.2'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: tested-candidate
-          path: ${{ runner.temp }}/candidate
-      - name: Verify and promote exact tested bytes without rebuilding
+          path: ${{ runner.temp }}/proof
+      - name: Repeat preflight and promote matching bytes without rebuilding
         env:
           RELEASE_REF: ${{ needs.eligibility.outputs.ref }}
-          REGISTRY: ${{ inputs.registry }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
           GHCR_REPOSITORY: ${{ github.repository }}
-        run: |
-          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --complete --release-ref "$RELEASE_REF"
-          docker load --input "$RUNNER_TEMP/candidate/image.tar"
-          python scripts/candidate.py verify --candidate-dir "$RUNNER_TEMP/candidate" --complete --release-ref "$RELEASE_REF" --loaded-image
-          python - <<'PY'
-          import json, os, pathlib, subprocess
-          directory = pathlib.Path(os.environ['RUNNER_TEMP']) / 'candidate'
-          candidate = json.loads((directory / 'candidate.json').read_text())
-          # Check with the native package credential before either registry write.
-          if os.environ['REGISTRY'] == 'pypi':
-              subprocess.run(['python', 'scripts/registry_preflight.py',
-                              os.environ['GHCR_REPOSITORY'].lower(), candidate['version']], check=True)
-          command = ['uv', 'publish', '--trusted-publishing', 'always']
-          if os.environ['REGISTRY'] == 'testpypi':
-              command += ['--index', 'testpypi']
-          subprocess.run(command + [str(directory / candidate['wheel']['file'])], check=True)
-          # TestPyPI is a real publication; it does not also publish a production image.
-          if os.environ['REGISTRY'] == 'pypi':
-              subprocess.run(['docker', 'login', 'ghcr.io', '--username', os.environ['GHCR_USER'],
-                              '--password-stdin'], input=os.environ['GHCR_TOKEN'], text=True, check=True)
-              image = 'ghcr.io/' + os.environ['GHCR_REPOSITORY'].lower() + ':' + candidate['version']
-              subprocess.run(['docker', 'tag', candidate['image']['tag'], image], check=True)
-              subprocess.run(['docker', 'push', image], check=True)
-              subprocess.run(['docker', 'image', 'inspect', '--format', '{{json .RepoDigests}}', image], check=True)
-          PY
+        run: node scripts/candidate.mjs promote --directory "$RUNNER_TEMP/proof/candidate" --release-ref "$RELEASE_REF"
