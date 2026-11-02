@@ -29,8 +29,8 @@ checks grant no merge, publication, deployment or business-write authority.
 
 Preserve dirty files, other worktrees, unique work, resource holdings and private
 bindings. Report overlapping ownership, dependencies and unresolved portfolio
-decisions to Marc in the current conversation. Do not contact other agents,
-launch delegates, poll mailboxes or use trackers/shared files as agent messages.
+decisions to Marc in the current conversation. Do not contact unrelated project agents, poll their mailboxes or use
+trackers/shared files as cross-project message relays.
 Each project owns its engineering and releases; consuming applications retain
 their deployment and business acceptance. The public
 [organization overview](https://github.com/godoo-dev/.github/blob/main/profile/README.md)

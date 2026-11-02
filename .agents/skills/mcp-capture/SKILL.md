@@ -117,8 +117,8 @@ Preserve supplied authority, source, existing grants/holdings and remaining
 acceptance. Retention alone accepts no implementation and launches no work.
 Return project identity, canonical URLs, created/updated/already-covered result,
 actual disposition, next actor and gaps through the current invocation only.
-No mailboxes, notifications, delegates or cross-agent messages; this project has
-no standing scheduler or `mafe-pending` dispatcher. An open PR correction stays
+Capture starts no cross-project conversations, mailbox polling or notifications.
+This project has no standing scheduler or `mafe-pending` dispatcher. An open PR correction stays
 in that PR when appropriate. A later operational fix retains linked remaining
 work and requires its own source-before-operation checks/authority; source merge
 does not itself authorize deployment, publication or business writes.
