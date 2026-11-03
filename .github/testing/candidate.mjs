@@ -18,8 +18,7 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-export const MANDATORY = ["validation"];
+export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const SUITES = ["source", "installed", "image"];
 const BUNDLES = [
   "index.mjs",
@@ -79,15 +78,6 @@ export function sourceIdentity(root = ROOT) {
       patch.length || names.length || output("git", ["status", "--porcelain"], { cwd: root }),
     ),
   };
-}
-
-export function requireResults(results) {
-  if (
-    !results ||
-    JSON.stringify(Object.keys(results).sort()) !== JSON.stringify([...MANDATORY].sort()) ||
-    Object.values(results).some((entry) => entry?.result !== "success")
-  )
-    throw new Error("Every mandatory CI job must succeed");
 }
 
 export function requireJunit(file) {
@@ -362,44 +352,15 @@ function quote(value) {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-export function offline(evidence) {
+export function offlineIdentity(evidence, complete = false) {
   evidence = outside(evidence);
   mkdirSync(evidence, { recursive: true });
+  const snapshot = join(evidence, "offline-source.json");
   const source = sourceIdentity();
-  run("pnpm", ["install", "--frozen-lockfile"]);
-  run("pnpm", ["typecheck"]);
-  run("pnpm", ["lint"]);
-  run("pnpm", ["build"]);
-  run(
-    "pnpm",
-    [
-      "exec",
-      "vitest",
-      "run",
-      "--reporter=default",
-      "--reporter=junit",
-      `--outputFile.junit=${join(evidence, "offline.xml")}`,
-    ],
-    { env: cleanEnvironment() },
-  );
-  run(process.execPath, [
-    "--test",
-    "--test-reporter=junit",
-    `--test-reporter-destination=${join(evidence, "controls.xml")}`,
-    join(ROOT, "scripts/candidate.test.mjs"),
-  ]);
-  requireJunit(join(evidence, "offline.xml"));
-  requireJunit(join(evidence, "controls.xml"));
-  run(process.execPath, [
-    "scripts/http-probe.mjs",
-    "--command",
-    `${quote(process.execPath)} ${quote(join(ROOT, "dist/node.mjs"))}`,
-    "--evidence",
-    join(evidence, "http-source"),
-  ]);
-  if (JSON.stringify(sourceIdentity()) !== JSON.stringify(source)) {
+  if (!complete) return writeFileSync(snapshot, JSON.stringify(source));
+  if (JSON.stringify(JSON.parse(readFileSync(snapshot, "utf8"))) !== JSON.stringify(source))
     throw new Error("Source changed during offline verification");
-  }
+  for (const name of ["offline", "controls"]) requireJunit(join(evidence, `${name}.xml`));
   writeFileSync(
     join(evidence, "offline-identity.json"),
     JSON.stringify({
@@ -414,12 +375,11 @@ export function packCandidate(directory, sourceRef = "local", evidence) {
   const siblingEvidence = join(dirname(directory), "offline");
   if (!evidence && existsSync(join(siblingEvidence, "offline-identity.json")))
     evidence = siblingEvidence;
+  if (!evidence) throw new Error("Packaging requires verified offline evidence");
   if (existsSync(join(directory, "candidate.json")))
     throw new Error("Candidate directory already has an identity");
   mkdirSync(directory, { recursive: true });
   const source = sourceIdentity();
-  run("pnpm", ["install", "--frozen-lockfile"]);
-  run("pnpm", ["build"]);
   const packed = JSON.parse(
     output("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", directory]),
   );
@@ -462,7 +422,7 @@ export function packCandidate(directory, sourceRef = "local", evidence) {
       throw new Error("Missing installed guidance/license");
   }
   run(process.execPath, [
-    "scripts/http-probe.mjs",
+    ".github/testing/http-probe.mjs",
     "--command",
     `${quote(process.execPath)} ${quote(join(installed, "dist/node.mjs"))}`,
     "--evidence",
@@ -760,8 +720,8 @@ async function main() {
   });
   const command = positionals[0];
   const directory = values.directory ? resolve(values.directory) : undefined;
-  if (command === "required") requireResults(JSON.parse(process.env.RESULTS ?? "null"));
-  else if (command === "offline" && values.evidence) offline(values.evidence);
+  if (["start-offline", "finish-offline"].includes(command) && values.evidence)
+    offlineIdentity(values.evidence, command === "finish-offline");
   else if (command === "package" && directory)
     packCandidate(directory, values["source-ref"], values.evidence);
   else if (command === "image" && directory) buildImage(directory);

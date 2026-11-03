@@ -1,6 +1,6 @@
 // @ts-expect-error shared build-time asset preparation
-import { codeInputs } from "./scripts/code-assets.mjs";
-import { meteredWasm } from "./scripts/meter-wasm.mjs";
+import { codeInputs } from "./.github/build/code-assets.mjs";
+import { meteredWasm } from "./.github/build/meter-wasm.mjs";
 import { defineConfig } from "vitest/config";
 
 const inputs = await codeInputs();

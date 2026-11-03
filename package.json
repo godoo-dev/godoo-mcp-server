@@ -23,9 +23,9 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "node .github/build/build.mjs",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check src/ts tests/ts scripts/*.mjs",
+    "lint": "biome check src/ts tests/ts .github/build/*.mjs .github/testing/*.mjs",
     "test": "vitest run",
     "start": "node dist/node.mjs",
     "check": "pnpm typecheck && pnpm lint && pnpm build && pnpm test"

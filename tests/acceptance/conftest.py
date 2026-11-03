@@ -492,7 +492,7 @@ async def artifact_store(tmp_path_factory):
     with log_path.open("wb") as log:
         process = await asyncio.create_subprocess_exec(
             "node",
-            str(root / "scripts" / "r2-service.mjs"),
+            str(root / ".github" / "testing" / "r2-service.mjs"),
             cwd=root,
             stdout=asyncio.subprocess.PIPE,
             stderr=log,
