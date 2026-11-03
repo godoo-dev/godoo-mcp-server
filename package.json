@@ -43,7 +43,7 @@
     "@modelcontextprotocol/server": "2.4.0",
     "@types/debug": "4.1.12",
     "@types/markdown-it": "14.1.2",
-    "@types/node": "25.9.1",
+    "@types/node": "26.6.6",
     "@types/ungap__structured-clone": "^1.2.0",
     "@ungap/structured-clone": "1.4.0",
     "@ungap/url-search-params": "0.2.2",
