@@ -25,6 +25,11 @@ export interface ObjectStore {
   delete(key: string, signal?: AbortSignal): Promise<void>;
 }
 export interface Runtime {
+  executeCode?: (
+    program: string,
+    uid: number,
+    port: import("./code-contract.js").CodePort,
+  ) => Promise<import("./code-contract.js").ExecutionResult>;
   config: Config;
   storage?: ObjectStore;
   log?: (event: Record<string, unknown>) => void;
@@ -39,6 +44,8 @@ export interface Operation {
   signal: AbortSignal;
   /** Call immediately before the final mutating RPC, after all preflight. */
   markWrite(): void;
+  /** Stop outstanding model transport without cancelling final result delivery. */
+  abort?(reason?: string): void;
 }
 export type ToolArguments = Record<string, unknown>;
 export type ToolHandler = (args: ToolArguments, operation: Operation) => Promise<unknown>;

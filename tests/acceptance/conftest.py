@@ -50,7 +50,7 @@ def mcp_process_factory(tmp_path: Path, artifact_store) -> Callable[..., Any]:
     """Launch an owned server using the selected runtime, with real private storage."""
 
     @asynccontextmanager
-    async def start(name: str = "mcp-process"):
+    async def start(name: str = "mcp-process", *, code_policy: dict | None = None):
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
             port = int(listener.getsockname()[1])
@@ -65,6 +65,8 @@ def mcp_process_factory(tmp_path: Path, artifact_store) -> Callable[..., Any]:
         }
         environment.update(artifact_store.environment)
         environment.update(HOST="127.0.0.1", PORT=str(port))
+        if code_policy is not None:
+            environment["ODOO_CODE_POLICY"] = json.dumps(code_policy)
         if image:
             command = [
                 "docker",
@@ -74,7 +76,7 @@ def mcp_process_factory(tmp_path: Path, artifact_store) -> Callable[..., Any]:
                 "--network",
                 "host",
             ]
-            for key in [*artifact_store.environment, "HOST", "PORT"]:
+            for key in [*artifact_store.environment, "HOST", "PORT", *(["ODOO_CODE_POLICY"] if code_policy is not None else [])]:
                 command += [
                     "--env",
                     "NODE_EXTRA_CA_CERTS=/tmp/mcp-acceptance-ca.pem"

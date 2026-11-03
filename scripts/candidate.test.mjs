@@ -60,6 +60,10 @@ function fixture(t) {
   );
   writeFileSync(join(staging, "package/dist/node.mjs"), "console.log('node fixture');");
   writeFileSync(join(staging, "package/dist/index.mjs"), "export const fixture = true;");
+  writeFileSync(join(staging, "package/dist/quickjs.wasm"), new Uint8Array([0, 97, 115, 109]));
+  for (const name of ["code-node.mjs", "code-node-isolate.mjs", "code-LICENSES.txt"])
+    writeFileSync(join(staging, "package/dist", name), "export const fixture = true;");
+  writeFileSync(join(staging, "package/dist/quickjs-metering.json"), "{}");
   execFileSync("git", ["init", "-q", "--initial-branch=main"], { cwd: root });
   execFileSync("git", ["config", "core.hooksPath", "/dev/null"], { cwd: root });
   execFileSync("git", ["add", "."], { cwd: root });
@@ -94,10 +98,16 @@ function fixture(t) {
     package: fileRecord(join(candidateDirectory, "package.tgz")),
     worker: fileRecord(join(candidateDirectory, "worker.mjs")),
     bundles: Object.fromEntries(
-      ["index.mjs", "node.mjs", "worker.mjs"].map((name) => [
-        name,
-        sha256(join(staging, "package/dist", name)),
-      ]),
+      [
+        "index.mjs",
+        "node.mjs",
+        "worker.mjs",
+        "quickjs.wasm",
+        "code-node.mjs",
+        "code-node-isolate.mjs",
+        "quickjs-metering.json",
+        "code-LICENSES.txt",
+      ].map((name) => [name, sha256(join(staging, "package/dist", name))]),
     ),
   };
   const save = () =>

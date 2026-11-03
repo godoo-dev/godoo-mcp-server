@@ -21,7 +21,16 @@ import { parseArgs } from "node:util";
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const MANDATORY = ["validation"];
 export const SUITES = ["source", "installed", "image"];
-const BUNDLES = ["index.mjs", "node.mjs", "worker.mjs"];
+const BUNDLES = [
+  "index.mjs",
+  "node.mjs",
+  "worker.mjs",
+  "quickjs.wasm",
+  "code-node.mjs",
+  "code-node-isolate.mjs",
+  "quickjs-metering.json",
+  "code-LICENSES.txt",
+];
 
 function output(command, args, options = {}) {
   return execFileSync(command, args, { cwd: ROOT, encoding: "utf8", ...options }).trim();
@@ -418,6 +427,7 @@ export function packCandidate(directory, sourceRef = "local", evidence) {
     throw new Error("Expected one packed candidate");
   const packageFile = join(directory, packed[0].filename);
   copyFileSync(join(ROOT, "dist/worker.mjs"), join(directory, "worker.mjs"));
+  copyFileSync(join(ROOT, "dist/quickjs.wasm"), join(directory, "quickjs.wasm"));
   const consumer = join(directory, "consumer");
   mkdirSync(consumer);
   writeFileSync(join(consumer, "package.json"), '{"private":true,"type":"module"}\n');

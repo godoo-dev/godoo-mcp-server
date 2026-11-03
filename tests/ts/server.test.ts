@@ -54,6 +54,20 @@ async function rpcValue(response: Response) {
 }
 
 describe("public MCP contract", () => {
+  it("refuses oversized Code Mode bodies before parsing or authentication", async () => {
+    const handler = createHandler({
+      config: {},
+      fetch: async () => {
+        throw new Error("Must not authenticate");
+      },
+    });
+    const response = await handler.fetch(
+      rpcRequest("tools/call", { name: "code_execute", arguments: { code: " ".repeat(600000) } }),
+    );
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: "code_request_limit" });
+    await handler.close();
+  });
   it("advertises the baseline tools and input contracts with no session affinity", async () => {
     const handler = createHandler({ config: {} });
     const response = await handler.fetch(rpcRequest("tools/list"));

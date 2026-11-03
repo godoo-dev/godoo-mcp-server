@@ -1,4 +1,5 @@
 import { cleanupExpired } from "./artifacts.js";
+import { executeCode } from "./code-engine.js";
 import { createHandler } from "./server.js";
 import { createR2Storage, createStorage, type R2BucketLike } from "./storage.js";
 import type { Config, Runtime } from "./types.js";
@@ -11,7 +12,11 @@ function runtime(env: WorkerEnv): Runtime {
   const config: Config = Object.fromEntries(
     Object.entries(env).filter((item): item is [string, string] => typeof item[1] === "string"),
   );
-  const result: Runtime = { config, log: (event) => console.log(JSON.stringify(event)) };
+  const result: Runtime = {
+    config,
+    executeCode,
+    log: (event) => console.log(JSON.stringify(event)),
+  };
   if (env.EXPORTS && (!config.ODOO_EXPORT_PROVIDER || config.ODOO_EXPORT_PROVIDER === "r2")) {
     config.ODOO_EXPORT_PROVIDER ||= "r2";
     // R2 binding accesses objects; scoped S3 credentials sign external download capabilities.

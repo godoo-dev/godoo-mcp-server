@@ -131,6 +131,7 @@ describe("built native Cloudflare Worker", () => {
     upstreamUrl = `http://127.0.0.1:${address.port}`;
     // Loading the actual candidate bundle also rejects unsupported Node imports.
     const bundle = await readFile("dist/worker.mjs", "utf8");
+    const wasm = await readFile("dist/quickjs.wasm");
     worker = new Miniflare({
       host: "127.0.0.1",
       port: 0,
@@ -150,6 +151,7 @@ describe("built native Cloudflare Worker", () => {
               mainModule: "worker.mjs",
               modules: {
                 "worker.mjs": { type: "esm", contents: bundle },
+                "quickjs.wasm": { type: "wasm", contents: await readFile("dist/quickjs.wasm") },
               },
             },
             env: {
@@ -163,6 +165,31 @@ describe("built native Cloudflare Worker", () => {
               AWS_ACCESS_KEY_ID: { type: "text", value: "disposable-access" },
               AWS_SECRET_ACCESS_KEY: { type: "text", value: "disposable-secret" },
               ODOO_REQUEST_TIMEOUT_MS: { type: "text", value: "60000" },
+              ODOO_CODE_POLICY: {
+                type: "text",
+                value: JSON.stringify({
+                  schemaVersion: 1,
+                  targets: [
+                    {
+                      url: upstreamUrl,
+                      database: "worker-test",
+                      uids: [11],
+                      effective: {
+                        schemaVersion: 1,
+                        source: "worker-fixture",
+                        declarations: [
+                          { model: "res.partner", method: "read", effects: ["read"] },
+                          { model: "res.partner", method: "echo", effects: ["read"] },
+                        ],
+                      },
+                      grants: [
+                        { model: "res.partner", method: "read", effects: ["read"] },
+                        { model: "res.partner", method: "echo", effects: ["read"] },
+                      ],
+                    },
+                  ],
+                }),
+              },
             },
           },
         },
@@ -175,6 +202,7 @@ describe("built native Cloudflare Worker", () => {
               mainModule: "worker.mjs",
               modules: {
                 "worker.mjs": { type: "esm" as const, contents: bundle },
+                "quickjs.wasm": { type: "wasm" as const, contents: wasm },
               },
             },
             env: {
@@ -316,6 +344,121 @@ describe("built native Cloudflare Worker", () => {
       ),
     );
     expect(object(result.result).structuredContent).toEqual({ result: { args, kwargs } });
+  });
+
+  it("executes the native SDK in a fresh WASM sandbox through actual MCP HTTP", async () => {
+    const call = async (code: string, extra: Record<string, unknown> = {}) =>
+      object(
+        object(
+          (
+            await value(
+              await worker.dispatchFetch(
+                "https://mcp.test/mcp",
+                rpc(
+                  "tools/call",
+                  { name: "code_execute", arguments: { code, max_return_bytes: null, ...extra } },
+                  upstreamUrl,
+                ),
+              ),
+            )
+          ).result,
+        ).structuredContent,
+      );
+    expect(
+      await call(
+        "const rows=await client.read('res.partner',[7],['name']); return {rows,uid:client.getSession().uid,fetch:typeof fetch};",
+      ),
+    ).toMatchObject({
+      status: "success",
+      result: { uid: 11, fetch: "undefined", rows: [{ id: 7, name: "Native R2 résumé" }] },
+      ledger: [{ outcome: "acknowledged" }],
+    });
+    expect(
+      await call(
+        "try{await client.call('res.partner','unlink',[[7]],{}, {safetyLevel:'READ'});}catch{} return true;",
+      ),
+    ).toMatchObject({ status: "failed", ledger: [{ outcome: "policy_refused" }] });
+    const reference = object(
+      object(
+        (
+          await value(
+            await worker.dispatchFetch(
+              "https://mcp.test/mcp",
+              rpc("tools/call", {
+                name: "code_reference",
+                arguments: { section: "type/BoundClientConfig" },
+              }),
+            ),
+          )
+        ).result,
+      ).structuredContent,
+    );
+    expect(reference.declaration).toContain("rpc: ModelRpc");
+    const resource = await value(
+      await worker.dispatchFetch(
+        "https://mcp.test/mcp",
+        rpc("resources/read", { uri: "skill://sdk/type/BoundClientConfig" }),
+      ),
+    );
+    expect(JSON.parse(String(array(object(resource.result).contents)[0].text))).toEqual(reference);
+    const artifact = await call("return {text:'résumé'.repeat(200)};", { max_return_bytes: 500 });
+    expect(artifact.status).toBe("success");
+    expect(object(artifact.result).delivery).toBe("artifact");
+  });
+
+  it("contains repeated hostile native WASM executions and admits healthy siblings", async () => {
+    const call = async (code: string) =>
+      object(
+        object(
+          (
+            await value(
+              await worker.dispatchFetch(
+                "https://mcp.test/mcp",
+                rpc(
+                  "tools/call",
+                  { name: "code_execute", arguments: { code, max_return_bytes: null } },
+                  upstreamUrl,
+                ),
+              ),
+            )
+          ).result,
+        ).structuredContent,
+      );
+    for (let i = 0; i < 12; i++) {
+      const bad = await call(
+        i % 2
+          ? "while(true){}"
+          : "const a=[]; for(let i=0;i<100000;i++)a.push(new Array(10000).fill(i));",
+      );
+      expect(bad.status).toBe("failed");
+      expect(await call("return 42;")).toMatchObject({ status: "success", result: 42 });
+    }
+  });
+
+  it("meters native BigInt and bulk memory work while retaining sibling responsiveness", async () => {
+    const programs = [
+      "const n=BigInt('9'.repeat(100000));return (n*n).toString().length;",
+      "const a=new Uint8Array(8000000);for(let i=0;i<10000;i++)a.copyWithin(0,1);return 1;",
+      "return 'x'.repeat(4000000).replaceAll('x','aa').length;",
+    ];
+    for (const code of programs) {
+      const started = performance.now();
+      const running = worker.dispatchFetch(
+        "https://mcp.test/mcp",
+        rpc(
+          "tools/call",
+          { name: "code_execute", arguments: { code, max_return_bytes: null } },
+          upstreamUrl,
+        ),
+      );
+      const health = await worker.dispatchFetch("https://mcp.test/healthz");
+      expect(health.status).toBe(200);
+      expect(performance.now() - started).toBeLessThan(1000);
+      const result = object(object((await value(await running)).result).structuredContent);
+      expect(result.status).toBe("failed");
+      expect(["fuel_limit", "cpu_limit"]).toContain(result.error);
+      expect(performance.now() - started).toBeLessThan(1500);
+    }
   });
 
   it("writes exact artifact bytes through the native R2 binding and returns only a signed receipt", async () => {

@@ -12,6 +12,8 @@ import { createMcpHandler, McpServer, ResourceTemplate } from "@modelcontextprot
 import debug from "debug";
 import { z } from "zod";
 import { getModelEntryFromCache } from "./catalog.js";
+import { codeJsonDepth } from "./code-json.js";
+import { codeReference, registerCodeMode } from "./code-mode.js";
 import { PublicError } from "./errors.js";
 import { guidance, guidanceIndex } from "./guidance.js";
 import contracts from "./tool-contracts.json" with { type: "json" };
@@ -74,6 +76,7 @@ export async function withOperation<T>(
   runtime: Runtime,
   creds: Credentials,
   callback: (operation: Operation) => Promise<T>,
+  ledgerResult = false,
 ): Promise<T> {
   const state = { authenticated: false, write: false, network: false };
   const timeout = Number(runtime.config.ODOO_REQUEST_TIMEOUT_MS || 120000);
@@ -81,9 +84,46 @@ export async function withOperation<T>(
     request.signal,
     AbortSignal.timeout(Number.isFinite(timeout) && timeout > 0 ? timeout : 120000),
   ]);
+  const transport = new AbortController();
   const upstream: typeof fetch = async (input, init) => {
     try {
-      return await (runtime.fetch || fetch)(input, { ...init, signal });
+      const response = await (runtime.fetch || fetch)(input, {
+        ...init,
+        signal: AbortSignal.any([signal, transport.signal]),
+      });
+      if (!ledgerResult || !response.body) return response;
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      try {
+        for (;;) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          size += chunk.value.byteLength;
+          // Bound the host before the SDK parses arbitrary upstream JSON.
+          if (size > 2 * 1024 * 1024) throw new Error("RPC response limit");
+          chunks.push(chunk.value);
+        }
+      } catch (error) {
+        transport.abort();
+        await reader.cancel().catch(() => undefined);
+        throw error;
+      } finally {
+        reader.releaseLock();
+      }
+      const content = new Uint8Array(size);
+      let offset = 0;
+      for (const chunk of chunks) {
+        content.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      if (!codeJsonDepth(new TextDecoder().decode(content)))
+        throw new Error("RPC JSON depth limit");
+      return new Response(content, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
     } catch (error) {
       state.network = true;
       throw error;
@@ -98,11 +138,12 @@ export async function withOperation<T>(
       creds,
       runtime: { ...runtime, signal },
       signal,
+      abort: (reason) => transport.abort(reason),
       markWrite: () => {
         state.write = true;
       },
     });
-    signal.throwIfAborted();
+    if (!ledgerResult) signal.throwIfAborted();
     return value;
   } catch (error) {
     throw safeError(error, state);
@@ -138,7 +179,7 @@ export function createHandler(runtime: Runtime) {
             resources: { subscribe: false, listChanged: false },
           },
           instructions:
-            "Stateless MCP server for Odoo. Read guidance_get (or skill://odoo/SKILL.md) for Odoo workflows. Use users_whoami to confirm identity and target URL. Database and host names do not establish an environment's safety. Guidance and tool annotations do not grant write permission or override client policy. Per-request credentials via X-Odoo-* headers.",
+            "Stateless MCP server for Odoo. Read guidance_get (or skill://odoo/SKILL.md) for Odoo workflows. Use users_whoami to confirm identity and target URL. Database and host names do not establish an environment's safety. Guidance and tool annotations do not grant write permission or override client policy. Use code_reference for native client/introspection Code Mode and its host authorization and limits. Per-request credentials via X-Odoo-* headers.",
         },
       );
       const register = (name: string, shape: Record<string, unknown>, callback: ToolHandler) => {
@@ -178,15 +219,34 @@ export function createHandler(runtime: Runtime) {
             try {
               if (name === "model_call") validateModelCallArguments(args as ToolArguments);
               const value =
-                name === "guidance_get"
-                  ? guidance.get(String((args as ToolArguments).path || "SKILL.md"))
-                  : await withOperation(request, runtime, credentials, (operation) =>
-                      callback(args as ToolArguments, operation),
+                name === "guidance_get" || name === "code_reference"
+                  ? name === "code_reference"
+                    ? codeReference(String((args as ToolArguments).section || "index"))
+                    : guidance.get(String((args as ToolArguments).path || "SKILL.md"))
+                  : await withOperation(
+                      request,
+                      runtime,
+                      credentials,
+                      (operation) => callback(args as ToolArguments, operation),
+                      name === "code_execute",
                     );
               if (value === undefined)
                 throw new PublicError(
                   "Unknown guidance path; use a path listed in the guidance index",
                 );
+              if (
+                name === "code_execute" &&
+                value &&
+                typeof value === "object" &&
+                "status" in value
+              ) {
+                category =
+                  value.status === "uncertain"
+                    ? "unknown_write"
+                    : value.status === "failed"
+                      ? "code_failed"
+                      : "success";
+              }
               return result(value);
             } catch (error) {
               const safe =
@@ -214,7 +274,22 @@ export function createHandler(runtime: Runtime) {
         );
       };
       registerTools({ server, register, runtime });
+      registerCodeMode({ server, register, runtime });
       register("guidance_get", { path: z.string().default("SKILL.md") }, async () => "");
+      server.registerResource(
+        "Godoo SDK Reference",
+        new ResourceTemplate("skill://sdk/{+section}", { list: undefined }),
+        { mimeType: "application/json" },
+        async (uri, variables) => ({
+          contents: [
+            {
+              uri: uri.href,
+              mimeType: "application/json",
+              text: JSON.stringify(codeReference(String(variables.section))),
+            },
+          ],
+        }),
+      );
       server.registerResource(
         "Skill Discovery Index",
         "skill://index.json",
@@ -317,7 +392,38 @@ export function createHandler(runtime: Runtime) {
       else if (url.pathname === "/mcp/")
         response = new Response(null, { status: 307, headers: { location: "/mcp" } });
       else if (url.pathname !== "/mcp") response = new Response("Not Found", { status: 404 });
-      else response = await handler.fetch(new Request(request, { headers, signal }));
+      else if (request.headers.get("mcp-name") === "code_execute" && request.body) {
+        const reader = request.body.getReader();
+        const parts: Uint8Array[] = [];
+        let length = 0;
+        try {
+          for (;;) {
+            const part = await reader.read();
+            if (part.done) break;
+            length += part.value.byteLength;
+            if (length > 512 * 1024) {
+              await reader.cancel();
+              break;
+            }
+            parts.push(part.value);
+          }
+        } finally {
+          reader.releaseLock();
+        }
+        if (length > 512 * 1024)
+          response = Response.json({ error: "code_request_limit" }, { status: 413 });
+        else {
+          const body = new Uint8Array(length);
+          let offset = 0;
+          for (const part of parts) {
+            body.set(part, offset);
+            offset += part.byteLength;
+          }
+          response = await handler.fetch(
+            new Request(request.url, { method: request.method, headers, signal, body }),
+          );
+        }
+      } else response = await handler.fetch(new Request(request, { headers, signal }));
       const responseHeaders = new Headers(response.headers);
       responseHeaders.set("x-request-id", requestId);
       const reader = response.body?.getReader();

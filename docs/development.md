@@ -128,3 +128,40 @@ main. Preserve unique, dirty, active and ambiguous worktrees; release cleanup ne
 separate authority and inspection. Retain work and deferred observations through
 [mcp-capture](../.agents/skills/mcp-capture/SKILL.md); canonical operational knowledge
 uses [mcp-docs](../.agents/skills/mcp-docs/SKILL.md).
+
+## Code Mode build and verification
+
+`scripts/code-assets.mjs` bundles the real portable SDK into a guest source string
+and indexes exact supplied declarations for progressive reference. The qualified
+unreleased SDK archives and hashes live in `vendor/godoo-ts-1ff8868/`; the lockfile
+and override bind client and introspection to the same client bytes. The existing
+request-local-fetch patch is rebased onto that client. Replace this source pin only
+with a qualified published release containing the portable/effect/reference APIs.
+
+`scripts/meter-wasm.mjs` instruments the hash-pinned QuickJS module with
+Binaryen 125.0.0. It charges function/loop entries and bulk memory bytes, rejects
+unrecognized expression shapes or changed coverage, preserves imports/exports and
+emits `dist/quickjs-metering.json`. No optimizer runs after instrumentation. Ship
+`dist/code-LICENSES.txt` with the package for the sandbox and portable SDK licenses.
+Keep these proof fixtures when changing either tool or the WASM input: native BigInt,
+repeated large `copyWithin`, regex, typed-array operations, SDK helpers and recovery.
+A JavaScript interrupt handler alone does not bound QuickJS native algorithms.
+
+Node launches `dist/code-node-isolate.mjs` in a fresh worker thread and keeps the
+RPC gate on the parent. Library embedders supply `Runtime.executeCode`; the Node
+adapter is exported from `@godoo-dev/mcp-server/code-node`. An absent executor fails
+closed. Node child bundles embed the metered WASM bytes and compile lazily. Native Workers
+import `dist/quickjs.wasm` as a compiled WASM module; Wrangler and Miniflare must
+include it alongside `worker.mjs`, without `nodejs_compat`. Candidate identity
+checks cover the server bundles, both Node executor modules and these exact WASM bytes. Never copy
+only the Worker JavaScript module.
+
+`tests/ts/code-mode.test.ts` exercises native SDK objects, policy enforcement,
+resource recovery and final artifact behavior; `code-policy.test.ts` covers per-RPC
+authority and frozen outcomes. Native Worker tests drive Code Mode through actual
+MCP HTTP and repeated hostile programs. `tests/acceptance/test_code_mode.py` adds
+real client/introspection/custom-method reads, portal ACLs, private artifact download
+and commit/lost-reply/disconnect cases with independent disposable-Odoo readback.
+The normal candidate suites run these through source, installed package and exact
+image on both supported Odoo majors. External client confirmation UI and billable
+model trials require their own commissioned acceptance.

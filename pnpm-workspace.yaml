@@ -10,3 +10,6 @@ minimumReleaseAgeExclude:
   - wrangler@4.156.1
 patchedDependencies:
   '@godoo-dev/client@0.8.0': patches/@godoo-dev__client@0.8.0.patch
+
+overrides:
+  '@godoo-dev/client': file:vendor/godoo-ts-1ff8868/godoo-dev-client-0.8.0.tgz

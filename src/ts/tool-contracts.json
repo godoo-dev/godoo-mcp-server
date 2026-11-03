@@ -1073,5 +1073,75 @@
         "tags": []
       }
     }
+  },
+  "code_reference": {
+    "name": "code_reference",
+    "title": "Godoo SDK Reference",
+    "description": "Discover native Code Mode globals, exact SDK declarations and focused helper examples without contacting Odoo. Start with section index; use type/<name> for signatures. Also skill://sdk/{section}.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "section": {
+          "type": "string",
+          "maxLength": 160,
+          "default": "index"
+        }
+      }
+    },
+    "outputSchema": {
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": false
+    }
+  },
+  "code_execute": {
+    "name": "code_execute",
+    "title": "Execute Godoo Code",
+    "description": "Run an async JavaScript body in a fresh sandbox with native client and introspect. Read code_reference first. Every RPC needs host target/user/method grants and effects matching operator policy. Requested effects default read and never grant authority. Inspect status and ledger; writes are independent transactions. Unknown outcomes stop dispatch; never replay automatically. Only final result is routed inline or to private storage.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["read", "mutate", "destructive", "external", "schema", "disclose", "unknown"]
+          },
+          "maxItems": 7,
+          "default": ["read"]
+        },
+        "max_return_bytes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1048576
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 500
+        }
+      }
+    },
+    "outputSchema": {
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
   }
 }

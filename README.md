@@ -1,7 +1,7 @@
 # godoo-mcp-server
 
 Operational MCP access to Odoo through record, discovery, chatter, activity,
-action, attachment, general model-method and user tools, plus bundled workflow
+action, attachment, general model-method and user tools, native sandboxed client/introspection Code Mode, plus bundled workflow
 guidance. The TypeScript server uses `@godoo-dev/client` and each caller's Odoo permissions.
 
 This is the operational Odoo MCP. Odoo Atlas provides a separate read-only
@@ -70,6 +70,17 @@ Workers accepts string configuration through its bindings; use
 `GOOGLE_SERVICE_ACCOUNT_KEY` rather than a mounted file for GCS. Node additionally
 supports the AWS default credential provider chain and mounted GCS key files.
 Choose S3 or GCS explicitly to use those providers even when an R2 binding remains.
+
+## Native Godoo Code Mode
+
+`code_reference` discovers SDK signatures and examples. `code_execute` runs an async
+JavaScript body with the native Godoo client and Introspector inside a fresh WASM
+sandbox. Each actual RPC is checked against operator-controlled target/user/effect
+grants in `ODOO_CODE_POLICY`; no policy means no RPC authority. Guest code cannot
+access credentials or grant itself writes. Inspect the returned ledger before
+following up on mutations; there is no automatic replay or multi-RPC rollback.
+See [Code Mode authorization, examples and limits](docs/api.md#server-side-code-mode).
+Final results use the same inline/private-storage delivery described below.
 
 ## Configure artifact storage
 

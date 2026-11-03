@@ -1,30 +1,7 @@
-diff --git a/dist/index.d.mts b/dist/index.d.mts
-index b0faca0952c38ecd252b41150f5813df73aecbc3..32cc6e21f5523482cf83f710459ce5c06c0d6c1f 100644
---- a/dist/index.d.mts
-+++ b/dist/index.d.mts
-@@ -72,7 +72,7 @@ declare class JsonRpcTransport {
-   private requestId;
-   private sessionInfo;
-   private password;
--  constructor(baseUrl: string, db: string);
-+  constructor(baseUrl: string, db: string, fetchImplementation?: typeof fetch);
-   /**
-   * Get the RPC endpoint URL
-   */
-@@ -1992,6 +1992,8 @@ declare class UrlService {
- //#endregion
- //#region src/client/odoo-client.d.ts
- interface OdooClientConfig {
-+  /** Request-scoped HTTP implementation; defaults to global fetch. */
-+  fetch?: typeof fetch;
-   url: string;
-   database: string;
-   username: string;
 diff --git a/dist/index.mjs b/dist/index.mjs
-index dbc8d9a5925c2d12ec26e129abca8ae0953ff60f..66d8e5ce859f24ff2e57e41b72f6475f5ccd5cb8 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
-@@ -242,7 +242,8 @@ var JsonRpcTransport = class {
+@@ -3706,7 +3706,8 @@
  	requestId = 0;
  	sessionInfo = null;
  	password = "";
@@ -34,7 +11,7 @@ index dbc8d9a5925c2d12ec26e129abca8ae0953ff60f..66d8e5ce859f24ff2e57e41b72f6475f
  		this.baseUrl = baseUrl.replace(/\/$/, "");
  		this.db = db;
  	}
-@@ -322,7 +323,7 @@ var JsonRpcTransport = class {
+@@ -3786,7 +3787,7 @@
  			id: this.nextRequestId()
  		};
  		try {
@@ -43,12 +20,33 @@ index dbc8d9a5925c2d12ec26e129abca8ae0953ff60f..66d8e5ce859f24ff2e57e41b72f6475f
  				method: "POST",
  				headers: { "Content-Type": "application/json" },
  				body: JSON.stringify(request)
-@@ -3913,7 +3914,7 @@ var OdooClient = class {
- 	safetyContext;
+@@ -3883,7 +3884,7 @@
  	constructor(config) {
+ 		super(config.safety);
  		this.config = config;
 -		this.transport = new JsonRpcTransport(config.url, config.database);
 +		this.transport = new JsonRpcTransport(config.url, config.database, config.fetch);
- 		this.safetyContext = config.safety;
  	}
- 	_mail;
+ 	/**
+ 	* Authenticate with Odoo
+diff --git a/dist/index.d.mts b/dist/index.d.mts
+--- a/dist/index.d.mts
++++ b/dist/index.d.mts
+@@ -1522,7 +1522,7 @@
+   private requestId;
+   private sessionInfo;
+   private password;
+-  constructor(baseUrl: string, db: string);
++  constructor(baseUrl: string, db: string, fetchImplementation?: typeof fetch);
+   /**
+   * Get the RPC endpoint URL
+   */
+@@ -1584,6 +1584,8 @@
+ //#endregion
+ //#region src/client/odoo-client.d.ts
+ interface OdooClientConfig {
++  /** Request-local transport, including cancellation and response bounds. */
++  fetch?: typeof fetch;
+   url: string;
+   database: string;
+   username: string;
