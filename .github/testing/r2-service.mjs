@@ -32,7 +32,7 @@ execFileSync(
   { stdio: "ignore" },
 );
 const bundled = await build({
-  entryPoints: ["scripts/r2-adapter.mjs"],
+  entryPoints: [".github/testing/r2-adapter.mjs"],
   bundle: true,
   format: "esm",
   write: false,

@@ -17,6 +17,150 @@ follows this checkout's handlers; IDs are numeric Odoo IDs, `values` is a field-
 object and domains use Odoo domain syntax. Optional `None` means omitted. `count`
 counts returned rows, not the total matching population.
 
+## Server-side Code Mode
+
+`code_execute(code, effects=["read"], max_return_bytes=500)` executes an async
+JavaScript function body in a fresh QuickJS/WASM sandbox. Use `return` for the final
+JSON value. TypeScript syntax and imports are unsupported. The actual portable
+Godoo client and introspection implementations run inside the guest:
+
+```json
+{"code":"return await client.searchRead('res.partner', [], {fields:['id','name'],limit:5});","max_return_bytes":null}
+```
+
+Globals are `client`, `sdk` (portable client exports), `introspect` (an Introspector
+bound to that client), `introspection`, `formatters` and bounded `console` logging.
+Maps, caches, property scopes/bindings and iterators stay native within one
+execution. Convert Maps to entries before returning JSON. Credentials, transport,
+filesystem, environment and arbitrary network access remain outside the guest.
+`client.getSession()` contains only the authenticated UID. `getServerInfo()` has
+no supplied snapshot and returns null. The guest has pure `structuredClone` and
+`URLSearchParams` implementations; browser APIs and timers are otherwise absent.
+Helpers requiring timers, including delayed module lifecycle retries, are outside
+this initial surface. Module operations can also exceed the execution deadline.
+Stateman is deferred.
+
+Start with `code_reference(section="index")`, then a family such as
+`introspection`, `properties`, `accounting` or `cdc`. The index lists exact SDK
+declaration names; `code_reference(section="type/BoundClientConfig")` returns a
+focused signature. The same JSON is available at `skill://sdk/index` and
+`skill://sdk/type/BoundClientConfig`, without authenticating with Odoo. Ordinary
+credential headers are still required by the HTTP boundary. Model discovery runs
+through `introspect.getModels()`, `getFields(model)` and `getFieldAttributes(model)`
+under the same host RPC policy as other SDK calls.
+
+### Authorize actual RPCs
+
+Without `ODOO_CODE_POLICY`, programs can compute locally but dispatch no Odoo RPCs.
+Set this **server-side** JSON configuration for the reviewed installation. This
+illustrative policy permits one user to run a specific read method; replace the
+URL, database, UID and manifest provenance with verified installation facts:
+
+```json
+{
+  "schemaVersion": 1,
+  "targets": [{
+    "url": "https://odoo.example",
+    "database": "example",
+    "uids": [7],
+    "effective": {
+      "schemaVersion": 1,
+      "source": "reviewed-installed-addons-revision",
+      "declarations": [{"model":"res.partner","method":"search_read","effects":["read"]}]
+    },
+    "grants": [{"model":"res.partner","method":"search_read","effects":["read"],"maxCalls":10}]
+  }]
+}
+```
+
+The target matches the normalized URL including its base path, exact database and
+**authenticated** UID. Duplicate matching target entries fail closed. An effective
+manifest attests the installed implementation including overrides; familiar method
+names alone do not prove reads are harmless. Update that attestation when addons
+change. Optional `addons` manifests only add effects. Library minima prevent
+downgrading deletion, module hooks, notification or token-disclosure effects.
+Missing effective coverage resolves to every effect, including `unknown`.
+
+Every actual RPC requires both the caller's requested effects and an exact
+model/method grant to cover its resolved effects. Effects are `read`, `mutate`,
+`destructive`, `external`, `schema`, `disclose` and `unknown`. Requests cannot supply
+manifests, select a permissive policy or grant their own authority. SDK safety
+options do not affect the host gate. An outer tool approval grants no inner write
+permission. There is no interactive approval protocol in this first implementation:
+operators explicitly preauthorize dangerous operations using target/user/method
+grants, and clients still apply their own confirmation policy before requesting
+them. To approve only an exact operation, include complete `args` and/or `kwargs`
+in a grant; JSON equality ignores object key order. Omitting them explicitly grants
+all arguments for that method and user. `maxCalls` limits that grant per execution
+(default 64). There are no wildcard grants. SDK helpers can issue several RPCs;
+every one needs coverage. Guest parallel calls are queued, with one upstream RPC
+in flight per execution.
+
+### Inspect results and outcomes
+
+The result envelope has `status` (`success`, `failed` or `uncertain`), `ledger`,
+`logs`, `elapsed_ms`, optional `error` and optional `result`. Ledger entries include
+sequence `id`, `model`, `method`, resolved `effects`, `outcome` and optional safe
+`category`; they omit arguments, credentials and returned records. Outcomes are
+`acknowledged`, `rejected`, `policy_refused`, `not_dispatched` and `unknown`.
+A guest catch or returned success value does not override the host ledger. A failed
+execution remains an ordinary tool result with this inspectable envelope;
+authentication and argument-validation errors use the usual MCP tool error.
+Telemetry records failed/uncertain envelopes as errors/unknown writes.
+
+Each Odoo RPC is a separate transaction. Earlier acknowledged writes remain applied
+when later code fails. A lost reply to a potentially effectful RPC makes it unknown,
+closes dispatch, aborts transport and cancels queued work. Never replay the program
+automatically or infer rollback from an execution/storage error. Inspect actual
+Odoo state before deciding what to do next. Caller disconnects can prevent delivery
+of any envelope; the same independent readback rule applies. The ledger is
+request-local, not a durable recovery journal.
+
+Only the completed program's JSON value is measured for delivery. It returns
+inline up to `max_return_bytes`; `null` keeps it inline and `0` requests private
+storage. Larger results use the existing signed artifact machinery. The ledger
+and bounded logs stay inline. Intermediate SDK values never become artifact
+receipts. Storage failure returns `result_delivery_failed` with the ledger and
+never reruns the program. The final value must be JSON-serializable; Map/Set values
+need explicit conversion, cyclic values and BigInt fail serialization.
+
+### Execution limits
+
+Each server process/Worker isolate admits at most two executions; extra calls
+fail immediately with `sandbox_busy`. Each uses a fresh WASM instance with a
+32 MiB linear-memory maximum, 16 MiB guest heap and 512 KiB guest stack. The wall
+deadline is 10 seconds. The metered WASM engine has one 20-million fuel budget
+covering setup, every function/loop entry and every byte of bulk memory copies or
+fills; it is never reset between RPCs or jobs. Exhaustion traps outside guest
+JavaScript catches and discards the instance. This is an operation budget, not a
+universal wall-time guarantee. JavaScript interrupt checks also aim for 50 ms bursts
+and 500 ms measured execution; native builtins and platform clocks make those
+checks best effort. Job pumping yields to the host between batches.
+
+Node additionally runs each program in a fresh worker thread with an empty
+environment, 48 MiB V8 heap and 2 MiB thread stack. An external watchdog samples
+thread CPU every 20 ms and terminates after 1 second of thread CPU or the wall
+deadline; admission remains held until termination. Its internal burst/cumulative
+checks also use thread CPU time, so host scheduling delays consume no CPU budget.
+Native Workers use the metered
+engine in the server isolate, without Node compatibility or a WorkerLoader binding.
+Fuel bounds computation there; hosted platform acceptance remains separate. These
+limits terminate programs; they do not suspend and resume them.
+
+Code Mode HTTP bodies are limited to 512 KiB before protocol parsing. Source is limited to 64 KiB UTF-8. Up to 64 RPC attempts share 1 MiB of submitted
+arguments (256 KiB per attempt), 1 MiB per RPC result and 4 MiB aggregate RPC results.
+Raw upstream bodies are capped at 2 MiB before parsing. The final JSON is capped
+at 1 MiB; bridge/upstream/final JSON nesting is capped at 64 and structural tokens at 50,000. Logs have a 4 KiB
+encoded budget and 128-entry maximum. Limits are host-owned and discoverable in
+`code_reference`. Unawaited work is cancelled at program return; a dispatched
+write without an acknowledged reply remains unknown.
+
+The current QuickJS version can assert during OOM teardown. The instance is
+discarded and the execution fails; subsequent calls use fresh instances. Sustained
+recovery and shared-host responsiveness require runtime verification. This source
+contract does not establish publication, deployment or acceptance in a selected
+external client.
+
 ## Tools
 
 `guidance_get(path="SKILL.md")` returns bundled Markdown without contacting Odoo.

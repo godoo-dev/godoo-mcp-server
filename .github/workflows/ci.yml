@@ -31,9 +31,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Check out event source
+        if: inputs.source_sha == ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+      - name: Check out immutable release source
+        if: inputs.source_sha != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
@@ -45,20 +52,26 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           python-version: '3.14.7'
+      - name: Install just
+        run: |
+          curl --fail --location --silent --show-error https://github.com/casey/just/releases/download/1.58.0/just-1.58.0-x86_64-unknown-linux-musl.tar.gz --output "$RUNNER_TEMP/just.tar.gz"
+          echo "4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d  $RUNNER_TEMP/just.tar.gz" | sha256sum --check -
+          tar -xzf "$RUNNER_TEMP/just.tar.gz" -C "$RUNNER_TEMP" just
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Typecheck, lint, unit, Workers runtime and gate rejection checks
-        run: node scripts/candidate.mjs offline --evidence "$RUNNER_TEMP/offline"
+        run: just offline "$RUNNER_TEMP/offline"
       - name: Pack once and exercise the isolated installed package
         env:
           SOURCE_REF: ${{ inputs.source_ref || github.ref }}
-        run: node scripts/candidate.mjs package --directory "$RUNNER_TEMP/candidate" --source-ref "$SOURCE_REF" --evidence "$RUNNER_TEMP/offline"
+        run: just package "$RUNNER_TEMP/candidate" "$SOURCE_REF" "$RUNNER_TEMP/offline"
       - name: Build one exact candidate image without recompiling source
-        run: node scripts/candidate.mjs image --directory "$RUNNER_TEMP/candidate"
+        run: just image "$RUNNER_TEMP/candidate"
       - name: Odoo18 Testcontainers through source, installed package and exact image
-        run: node scripts/candidate.mjs odoo --directory "$RUNNER_TEMP/candidate" --major 18
+        run: just odoo "$RUNNER_TEMP/candidate" 18
       - name: Odoo19 Testcontainers through source, installed package and exact image
-        run: node scripts/candidate.mjs odoo --directory "$RUNNER_TEMP/candidate" --major 19
+        run: just odoo "$RUNNER_TEMP/candidate" 19
       - name: Reject incomplete proof and reload the same image archive
-        run: node scripts/candidate.mjs archive --directory "$RUNNER_TEMP/candidate"
+        run: just archive "$RUNNER_TEMP/candidate"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -75,14 +88,7 @@ jobs:
     needs: [validation]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ inputs.source_sha || github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
-        with:
-          node-version: ${{ env.NODE_VERSION }}
       - name: Require exactly every mandatory successful result
         env:
-          RESULTS: ${{ toJSON(needs) }}
-        run: node scripts/candidate.mjs required
+          VALIDATION_RESULT: ${{ needs.validation.result }}
+        run: test "$VALIDATION_RESULT" = success

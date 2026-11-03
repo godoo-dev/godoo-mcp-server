@@ -29,6 +29,14 @@ subsequent source changes require a fresh candidate.
 From the checkout root, substitute external paths:
 
 ```sh
+just validate "$evidence"
+```
+
+This runs the actual CI workflow through `act`, including setup, all stages and
+artifact upload. GitHub runs the same workflow remotely. For focused diagnosis,
+the workflow's individual stage recipes are also available:
+
+```sh
 just offline "$evidence/offline"
 just package "$evidence/candidate" local "$evidence/offline"
 just image "$evidence/candidate"
@@ -40,7 +48,7 @@ just archive "$evidence/candidate"
 - `offline`: frozen install, strict TypeScript, Biome, builds, Vitest, candidate
   rejection tests and real loopback HTTP. Native Worker tests execute the built
   bundle in Miniflare without Node compatibility, including R2 and scheduled cleanup.
-- `package`: pack once and install that npm tarball into an isolated external
+- `package`: consume the verified build, pack once and install that npm tarball into an isolated external
   consumer. Verify CLI/version and drive real HTTP, including bundled guidance.
 - `image`: verify unchanged source/locks/package, build the tarball into one pinned
   non-root Node image and export its exact archive.
@@ -52,7 +60,7 @@ just archive "$evidence/candidate"
 - `r2`: focused artifact/storage/native Worker checks, including actual downloads,
   signed URL tamper rejection and cleanup. Live provider acceptance stays separate.
 
-The maintained HTTP driver is `scripts/http-probe.mjs`; see
+The maintained HTTP driver is `.github/testing/http-probe.mjs`; see
 [the HTTP recipe](references/http-smoke.md). It clears ambient Odoo credentials,
 starts an owned process with a readiness deadline and retains responses/logs before
 bounded exact-process teardown. Canonical POST is `/mcp`; `/mcp/` redirects.

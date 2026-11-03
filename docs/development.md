@@ -8,10 +8,10 @@ the deployed MCP runtime.
 ```sh
 pnpm install --frozen-lockfile
 pnpm check
-node --test scripts/candidate.test.mjs
+node --test .github/testing/candidate.test.mjs
 ```
 
-`pnpm check` runs strict TypeScript, Biome, all three builds and Vitest.
+`pnpm check` runs strict TypeScript, Biome, runtime builds and Vitest.
 Tests cover public schemas, friendly properties, storage signatures and rollback,
 request isolation and the actual built Worker in Miniflare without `nodejs_compat`.
 `just r2` selects storage/artifact/native Worker checks. OpenSSL is required by
@@ -19,6 +19,25 @@ the disposable TLS S3 adapter. Live provider permissions and expiry remain rollo
 acceptance. For documentation-only edits, check affected links and `git diff --check`.
 
 ## Native candidate checks
+
+Run full local verification with `act` 0.2.95+ and Docker:
+
+```sh
+just validate "$evidence"
+```
+
+This executes the checked-in CI workflow, including setup actions, all acceptance
+stages, the required-result gate and artifact upload. GitHub runs the same workflow
+remotely. The recipe selects a pinned runner image, host networking for loopback
+fixtures and Docker access for Testcontainers. In a Git worktree it mounts the
+common Git metadata read-only so candidate source identity still works. It uses
+empty environment/secret/input files rather than loading local deployment secrets.
+The `tested-candidate` artifact is retained in the supplied external directory.
+Additional `act` flags can follow that directory.
+
+Stage commands live in `justfile`; compiler, test-fixture and artifact-identity
+support lives under `.github/`. The package stage consumes the verified build
+instead of rebuilding it. For a focused diagnosis, invoke individual stages:
 
 Use a new external evidence directory for each candidate. Docker must be available;
 these checks provision only disposable Odoo/Postgres resources:
@@ -32,8 +51,8 @@ just odoo "$evidence/candidate" 19
 just archive "$evidence/candidate"
 ```
 
-`just validate "$evidence"` runs the sequence. The package step builds one npm
-tarball, installs it in a consumer outside source and drives real Streamable HTTP.
+The package step packs one npm tarball, installs it in a consumer outside source
+and drives real Streamable HTTP.
 The Dockerfile installs that exact tarball into a pinned non-root Node image.
 Each Odoo major runs the full external acceptance suite through source, installed
 package and the same candidate image. The archive gate checks hashes, reports,
@@ -82,7 +101,9 @@ No model subscription or real Odoo credentials are needed for required CI.
 | `src/ts/guidance.ts` | Guidance manifest, bundling and discovery |
 | `src/godoo_mcp_server/skills/` | Preserved consumer Markdown, provenance and CC0 license |
 | `tests/acceptance/` | Independent frozen Python SDK/Testcontainers acceptance |
-| `scripts/candidate.mjs` | Candidate identity, proof gates and promotion checks |
+| `.github/testing/candidate.mjs` | Candidate identity, proof gates and promotion checks |
+| `.github/build/` | Runtime bundling, guest SDK assets and WASM metering |
+| `justfile`, `.github/workflows/` | Stage commands and local/remote CI orchestration |
 
 Adding a guidance file alone does not expose it. Use the
 [authoring procedure](../.agents/skills/mcp-guidance-authoring/SKILL.md) and preserve
@@ -92,7 +113,7 @@ Repository maintenance skills are not served to consumers.
 ## Packaging and client dependency
 
 `package.json` defines `@godoo-dev/mcp-server`, the `godoo-mcp-server` CLI and
-portable core/Worker exports. `scripts/build.mjs` bundles runtime dependencies into
+portable core/Worker exports. `.github/build/build.mjs` bundles runtime dependencies into
 `dist/index.mjs`, `dist/node.mjs` and `dist/worker.mjs`; installation needs no runtime
 package resolution. The Node bundle includes its AWS credential provider chain.
 The Worker bundle uses native Web APIs and the `enable_request_signal`
@@ -128,3 +149,40 @@ main. Preserve unique, dirty, active and ambiguous worktrees; release cleanup ne
 separate authority and inspection. Retain work and deferred observations through
 [mcp-capture](../.agents/skills/mcp-capture/SKILL.md); canonical operational knowledge
 uses [mcp-docs](../.agents/skills/mcp-docs/SKILL.md).
+
+## Code Mode build and verification
+
+`.github/build/code-assets.mjs` bundles the real portable SDK into a guest source string
+and indexes exact supplied declarations for progressive reference. The qualified
+unreleased SDK archives and hashes live in `vendor/godoo-ts-1ff8868/`; the lockfile
+and override bind client and introspection to the same client bytes. The existing
+request-local-fetch patch is rebased onto that client. Replace this source pin only
+with a qualified published release containing the portable/effect/reference APIs.
+
+`.github/build/meter-wasm.mjs` instruments the hash-pinned QuickJS module with
+Binaryen 125.0.0. It charges function/loop entries and bulk memory bytes, rejects
+unrecognized expression shapes or changed coverage, preserves imports/exports and
+emits `dist/quickjs-metering.json`. No optimizer runs after instrumentation. Ship
+`dist/code-LICENSES.txt` with the package for the sandbox and portable SDK licenses.
+Keep these proof fixtures when changing either tool or the WASM input: native BigInt,
+repeated large `copyWithin`, regex, typed-array operations, SDK helpers and recovery.
+A JavaScript interrupt handler alone does not bound QuickJS native algorithms.
+
+Node launches `dist/code-node-isolate.mjs` in a fresh worker thread and keeps the
+RPC gate on the parent. Library embedders supply `Runtime.executeCode`; the Node
+adapter is exported from `@godoo-dev/mcp-server/code-node`. An absent executor fails
+closed. Node child bundles embed the metered WASM bytes and compile lazily. Native Workers
+import `dist/quickjs.wasm` as a compiled WASM module; Wrangler and Miniflare must
+include it alongside `worker.mjs`, without `nodejs_compat`. Candidate identity
+checks cover the server bundles, both Node executor modules and these exact WASM bytes. Never copy
+only the Worker JavaScript module.
+
+`tests/ts/code-mode.test.ts` exercises native SDK objects, policy enforcement,
+resource recovery and final artifact behavior; `code-policy.test.ts` covers per-RPC
+authority and frozen outcomes. Native Worker tests drive Code Mode through actual
+MCP HTTP and repeated hostile programs. `tests/acceptance/test_code_mode.py` adds
+real client/introspection/custom-method reads, portal ACLs, private artifact download
+and commit/lost-reply/disconnect cases with independent disposable-Odoo readback.
+The normal candidate suites run these through source, installed package and exact
+image on both supported Odoo majors. External client confirmation UI and billable
+model trials require their own commissioned acceptance.

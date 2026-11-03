@@ -18,10 +18,10 @@ import {
   checkFile,
   fileRecord,
   promoteArtifacts,
+  ROOT,
   registryPreflight,
   requireJunit,
   requireReleaseRef,
-  requireResults,
   SUITES,
   sha256,
   sourceIdentity,
@@ -60,6 +60,10 @@ function fixture(t) {
   );
   writeFileSync(join(staging, "package/dist/node.mjs"), "console.log('node fixture');");
   writeFileSync(join(staging, "package/dist/index.mjs"), "export const fixture = true;");
+  writeFileSync(join(staging, "package/dist/quickjs.wasm"), new Uint8Array([0, 97, 115, 109]));
+  for (const name of ["code-node.mjs", "code-node-isolate.mjs", "code-LICENSES.txt"])
+    writeFileSync(join(staging, "package/dist", name), "export const fixture = true;");
+  writeFileSync(join(staging, "package/dist/quickjs-metering.json"), "{}");
   execFileSync("git", ["init", "-q", "--initial-branch=main"], { cwd: root });
   execFileSync("git", ["config", "core.hooksPath", "/dev/null"], { cwd: root });
   execFileSync("git", ["add", "."], { cwd: root });
@@ -94,10 +98,16 @@ function fixture(t) {
     package: fileRecord(join(candidateDirectory, "package.tgz")),
     worker: fileRecord(join(candidateDirectory, "worker.mjs")),
     bundles: Object.fromEntries(
-      ["index.mjs", "node.mjs", "worker.mjs"].map((name) => [
-        name,
-        sha256(join(staging, "package/dist", name)),
-      ]),
+      [
+        "index.mjs",
+        "node.mjs",
+        "worker.mjs",
+        "quickjs.wasm",
+        "code-node.mjs",
+        "code-node-isolate.mjs",
+        "quickjs-metering.json",
+        "code-LICENSES.txt",
+      ].map((name) => [name, sha256(join(staging, "package/dist", name))]),
     ),
   };
   const save = () =>
@@ -204,17 +214,17 @@ function complete(state) {
   state.save();
 }
 
-test("required admits exactly successful validation", () => {
-  requireResults({ validation: { result: "success" } });
-  for (const results of [
-    null,
-    {},
-    { other: { result: "success" } },
-    { validation: { result: "success" }, extra: { result: "success" } },
-  ])
-    assert.throws(() => requireResults(results));
-  for (const result of ["failure", "skipped", "cancelled", "", null, false])
-    assert.throws(() => requireResults({ validation: { result } }));
+test("required workflow gate rejects every result except success", () => {
+  const workflow = readFileSync(join(ROOT, ".github/workflows/ci.yml"), "utf8");
+  const command = workflow.split("\n  required:")[1]?.match(/\brun: (.+)/)?.[1];
+  assert.ok(command, "Missing required workflow gate");
+  const check = (result) =>
+    execFileSync("bash", ["-euc", command], {
+      env: { ...process.env, VALIDATION_RESULT: result },
+    });
+  check("success");
+  for (const result of ["failure", "skipped", "cancelled", "", "null", "false"])
+    assert.throws(() => check(result));
 });
 
 test("required JUnit rejects empty, truncated, skipped and errored reports", (t) => {

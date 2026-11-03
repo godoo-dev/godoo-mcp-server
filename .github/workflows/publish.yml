@@ -38,7 +38,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ inputs.tag }}
           DISPATCH_REF: ${{ github.ref }}
-        run: node scripts/candidate.mjs resolve-release
+        run: node .github/testing/candidate.mjs resolve-release
 
   validation:
     needs: eligibility
@@ -72,7 +72,7 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
           GHCR_REPOSITORY: ${{ github.repository }}
-        run: node scripts/candidate.mjs preflight --directory "$RUNNER_TEMP/proof/candidate" --release-ref "$RELEASE_REF"
+        run: node .github/testing/candidate.mjs preflight --directory "$RUNNER_TEMP/proof/candidate" --release-ref "$RELEASE_REF"
 
   promote:
     if: ${{ inputs.publish == true }}
@@ -102,4 +102,4 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
           GHCR_REPOSITORY: ${{ github.repository }}
-        run: node scripts/candidate.mjs promote --directory "$RUNNER_TEMP/proof/candidate" --release-ref "$RELEASE_REF"
+        run: node .github/testing/candidate.mjs promote --directory "$RUNNER_TEMP/proof/candidate" --release-ref "$RELEASE_REF"

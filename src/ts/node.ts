@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { defaultProvider } from "@aws-sdk/credential-provider-node";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { cleanupExpired } from "./artifacts.js";
+import { createNodeCodeExecutor } from "./code-node.js";
 import { createHandler, version } from "./server.js";
 import { createStorage } from "./storage.js";
 import type { Runtime } from "./types.js";
@@ -14,7 +15,11 @@ if (process.argv.includes("--version")) {
   if (config.GOOGLE_SERVICE_ACCOUNT && !config.GOOGLE_SERVICE_ACCOUNT_KEY) {
     config.GOOGLE_SERVICE_ACCOUNT_KEY = await readFile(config.GOOGLE_SERVICE_ACCOUNT, "utf8");
   }
-  const runtime: Runtime = { config, log: (event) => console.log(JSON.stringify(event)) };
+  const runtime: Runtime = {
+    config,
+    executeCode: createNodeCodeExecutor(),
+    log: (event) => console.log(JSON.stringify(event)),
+  };
   if (config.ODOO_EXPORT_PROVIDER) {
     try {
       if (["r2", "s3"].includes(config.ODOO_EXPORT_PROVIDER) && !config.AWS_ACCESS_KEY_ID) {

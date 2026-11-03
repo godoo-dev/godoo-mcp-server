@@ -3,7 +3,7 @@
 The maintained executable is:
 
 ```sh
-node scripts/http-probe.mjs --command "node $PWD/dist/node.mjs" --evidence "$evidence/http"
+node .github/testing/http-probe.mjs --command "node $PWD/dist/node.mjs" --evidence "$evidence/http"
 ```
 
 `just offline` and `just package` invoke this same driver. It clears

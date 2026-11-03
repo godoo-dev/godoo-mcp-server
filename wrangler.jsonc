@@ -3,6 +3,7 @@
   "name": "godoo-mcp-server",
   "main": "dist/worker.mjs",
   "compatibility_date": "2026-11-02",
+  "rules": [{ "type": "CompiledWasm", "globs": ["**/*.wasm"], "fallthrough": true }],
   "compatibility_flags": ["enable_request_signal"],
   "vars": {
     "ODOO_EXPORT_PROVIDER": "r2",

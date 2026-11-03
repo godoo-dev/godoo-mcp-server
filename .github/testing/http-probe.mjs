@@ -104,7 +104,7 @@ try {
     return [response.status, value];
   }
   const contracts = JSON.parse(
-    await readFile(new URL("../src/ts/tool-contracts.json", import.meta.url), "utf8"),
+    await readFile(new URL("../../src/ts/tool-contracts.json", import.meta.url), "utf8"),
   );
   for (let index = 0; index < 2; index++) {
     const [status, value] = await request();
