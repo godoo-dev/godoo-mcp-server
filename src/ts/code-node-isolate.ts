@@ -1,5 +1,6 @@
 import { parentPort, workerData } from "node:worker_threads";
-import { type CodePort, executeCode } from "./code-engine.js";
+import { CODE_LIMITS, CODE_RPC_LIMITS, type CodePort } from "./code-contract.js";
+import { executeCode } from "./code-engine.js";
 
 if (!parentPort) throw new Error("Code Mode requires an isolated worker");
 const channel = parentPort;
@@ -26,8 +27,8 @@ channel.on("message", (message: unknown) => {
     !["kind", "id", "encoded"].every((key) => Object.hasOwn(response, key)) ||
     !Number.isSafeInteger(response.id) ||
     typeof response.encoded !== "string" ||
-    response.encoded.length > 1024 * 1024 ||
-    new TextEncoder().encode(response.encoded).byteLength > 1024 * 1024
+    response.encoded.length > CODE_RPC_LIMITS.resultBytes ||
+    new TextEncoder().encode(response.encoded).byteLength > CODE_RPC_LIMITS.resultBytes
   )
     return close("bridge_failed");
   const item = pending.get(response.id as number);
@@ -40,7 +41,12 @@ const port: CodePort = {
   signal: stopped.signal,
   close,
   dispatch(encoded) {
-    if (closed || nextId >= 64 || typeof encoded !== "string" || encoded.length > 256 * 1024)
+    if (
+      closed ||
+      nextId >= CODE_RPC_LIMITS.attempts ||
+      typeof encoded !== "string" ||
+      encoded.length > CODE_RPC_LIMITS.argumentBytes
+    )
       return Promise.reject(new Error("Bridge closed"));
     const id = ++nextId;
     const response = new Promise<string>((resolve, reject) =>
@@ -55,7 +61,7 @@ try {
   const input = workerData as { code?: unknown; uid?: unknown };
   if (
     typeof input?.code !== "string" ||
-    input.code.length > 65536 ||
+    input.code.length > CODE_LIMITS.source_bytes ||
     !Number.isSafeInteger(input.uid) ||
     Number(input.uid) <= 0
   )

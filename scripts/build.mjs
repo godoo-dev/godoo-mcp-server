@@ -14,34 +14,31 @@ const common = {
   define: { __VERSION__: JSON.stringify(metadata.version) },
   legalComments: "linked",
 };
-await build({
-  ...common,
-  entryPoints: ["src/ts/server.ts"],
-  outfile: "dist/index.mjs",
-  platform: "browser",
-  conditions: ["browser"],
-  mainFields: ["browser", "module", "main"],
-  plugins: [await codeAssets()],
-});
-await build({
-  ...common,
-  entryPoints: ["src/ts/node.ts"],
-  outfile: "dist/node.mjs",
-  platform: "node",
-  plugins: [await codeAssets()],
-  banner: {
-    js: "#!/usr/bin/env node\nimport { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
-  },
-});
-await build({
-  ...common,
-  entryPoints: ["src/ts/worker.ts"],
-  outfile: "dist/worker.mjs",
-  platform: "browser",
-  conditions: ["workerd", "worker", "browser"],
-  mainFields: ["browser", "module", "main"],
-  plugins: [await codeAssets(true)],
-});
+const nodeBanner =
+  "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);";
+for (const [name, entry] of Object.entries({
+  index: "server",
+  node: "node",
+  worker: "worker",
+  "code-node": "code-node",
+  "code-node-isolate": "code-node-isolate",
+})) {
+  const worker = name === "worker";
+  const node = name !== "index" && !worker;
+  await build({
+    ...common,
+    entryPoints: [`src/ts/${entry}.ts`],
+    outfile: `dist/${name}.mjs`,
+    platform: node ? "node" : "browser",
+    ...(node
+      ? { banner: { js: `${name === "node" ? "#!/usr/bin/env node\n" : ""}${nodeBanner}` } }
+      : {
+          conditions: worker ? ["workerd", "worker", "browser"] : ["browser"],
+          mainFields: ["browser", "module", "main"],
+        }),
+    plugins: [await codeAssets(worker)],
+  });
+}
 const metered = await meteredWasm();
 await writeFile("dist/quickjs.wasm", metered.bytes);
 await writeFile("dist/quickjs-metering.json", `${JSON.stringify(metered.manifest)}\n`);
@@ -58,16 +55,4 @@ for (const dependency of [
   codeLicenses.push(`${dependency}\n\n${license}`);
 }
 await writeFile("dist/code-LICENSES.txt", `${codeLicenses.join("\n\n---\n\n")}\n`);
-for (const name of ["code-node", "code-node-isolate"]) {
-  await build({
-    ...common,
-    entryPoints: [`src/ts/${name}.ts`],
-    outfile: `dist/${name}.mjs`,
-    platform: "node",
-    plugins: [await codeAssets()],
-    banner: {
-      js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
-    },
-  });
-}
 await writeFile("dist/version.json", `${JSON.stringify({ version: metadata.version })}\n`);

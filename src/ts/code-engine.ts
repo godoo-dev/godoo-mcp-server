@@ -9,7 +9,12 @@ import {
   type QuickJSDeferredPromise,
   type QuickJSRuntime,
 } from "quickjs-emscripten-core";
-import { CODE_LIMITS, type CodePort, type ExecutionResult } from "./code-contract.js";
+import {
+  CODE_LIMITS,
+  CODE_RPC_LIMITS,
+  type CodePort,
+  type ExecutionResult,
+} from "./code-contract.js";
 import { codeJsonDepth } from "./code-json.js";
 
 export { CODE_LIMITS, type CodePort, type ExecutionResult } from "./code-contract.js";
@@ -154,12 +159,12 @@ export async function executeCode(
     hostLog.dispose();
     const bridge = context.newFunction("rpc", (value) => {
       attempts += 1;
-      if (attempts > 64) {
+      if (attempts > CODE_RPC_LIMITS.attempts) {
         stop("rpc_limit");
         return context.undefined;
       }
       const encoded = context.getString(value);
-      if (bytes(encoded) > 256 * 1024) {
+      if (bytes(encoded) > CODE_RPC_LIMITS.argumentBytes) {
         stop("argument_limit");
         return context.undefined;
       }
@@ -221,8 +226,7 @@ export async function executeCode(
       }
       if (terminal) throw new Error(terminal);
       if (encoded !== undefined) {
-        if (typeof encoded !== "string" || bytes(encoded) > CODE_LIMITS.final_bytes)
-          throw new Error("final_limit");
+        if (bytes(encoded) > CODE_LIMITS.final_bytes) throw new Error("final_limit");
         if (!codeJsonDepth(encoded)) throw new Error("final_structure_limit");
         const parsed = JSON.parse(encoded);
         outcome =

@@ -1,12 +1,14 @@
 import { Worker } from "node:worker_threads";
-import { CODE_LIMITS } from "./code-contract.js";
-import type { CodePort, ExecutionResult } from "./code-engine.js";
+import {
+  CODE_LIMITS,
+  CODE_RPC_LIMITS,
+  type CodePort,
+  type ExecutionResult,
+} from "./code-contract.js";
 import { codeJsonDepth } from "./code-json.js";
 
 const CPU_LIMIT_MS = 1000;
 const CPU_SAMPLE_MS = 20;
-const MAX_RPC_BYTES = 256 * 1024;
-const MAX_RESPONSE_BYTES = 1024 * 1024;
 const encoder = new TextEncoder();
 // Admission spans executor instances, initialization and worker termination.
 let admitted = 0;
@@ -78,7 +80,7 @@ function attachReply(pending: Promise<string>, reply: Reply): void {
     .then(
       (encoded) => {
         if (!reply.worker) return;
-        if (!boundedString(encoded, MAX_RESPONSE_BYTES)) return reply.fail?.();
+        if (!boundedString(encoded, CODE_RPC_LIMITS.resultBytes)) return reply.fail?.();
         try {
           reply.worker.postMessage({ kind: "response", id: reply.id, encoded });
         } catch {
@@ -144,21 +146,21 @@ export function createNodeCodeExecutor(
         let settled = false;
         let sampling = false;
         let lastRpc = 0;
-        const finish = (outcome: ExecutionResult, reason: string) => {
+        const finish = (outcome: ExecutionResult) => {
           if (settled) return;
           settled = true;
           try {
-            close(reason);
+            close(outcome.error ?? "execution_finished");
           } catch {
             outcome = failed("sandbox_failed");
           }
           resolve(outcome);
         };
-        const invalid = () => finish(failed("bridge_failed"), "bridge_failed");
-        onAbort = () => finish(failed("cancelled"), "cancelled");
+        const invalid = () => finish(failed("bridge_failed"));
+        onAbort = () => finish(failed("cancelled"));
         port.signal.addEventListener("abort", onAbort, { once: true });
         if (port.signal.aborted) onAbort();
-        timer = setTimeout(() => finish(failed("deadline"), "deadline"), CODE_LIMITS.deadline_ms);
+        timer = setTimeout(() => finish(failed("deadline")), CODE_LIMITS.deadline_ms);
         isolate.on("message", (message: unknown) => {
           if (settled) return;
           if (!record(message)) return invalid();
@@ -167,8 +169,8 @@ export function createNodeCodeExecutor(
               closed ||
               !exactKeys(message, ["kind", "id", "encoded"]) ||
               message.id !== lastRpc + 1 ||
-              lastRpc >= 64 ||
-              !boundedString(message.encoded, MAX_RPC_BYTES)
+              lastRpc >= CODE_RPC_LIMITS.attempts ||
+              !boundedString(message.encoded, CODE_RPC_LIMITS.argumentBytes)
             )
               return invalid();
             lastRpc += 1;
@@ -199,12 +201,12 @@ export function createNodeCodeExecutor(
           } else if (message.kind === "result") {
             if (!closed || !exactKeys(message, ["kind", "result"]) || !validResult(message.result))
               return invalid();
-            finish(message.result, "execution_finished");
+            finish(message.result);
           } else invalid();
         });
-        isolate.on("error", () => finish(failed("sandbox_crashed"), "sandbox_crashed"));
+        isolate.on("error", () => finish(failed("sandbox_crashed")));
         isolate.on("exit", () => {
-          if (!settled) finish(failed("sandbox_crashed"), "sandbox_crashed");
+          if (!settled) finish(failed("sandbox_crashed"));
         });
         isolate.once("online", () => {
           sampler = setInterval(() => {
@@ -215,10 +217,10 @@ export function createNodeCodeExecutor(
               .then(
                 (usage) => {
                   if (!settled && usage.user + usage.system > CPU_LIMIT_MS * 1000)
-                    finish(failed("cpu_limit"), "cpu_limit");
+                    finish(failed("cpu_limit"));
                 },
                 () => {
-                  if (!settled && !closed) finish(failed("sandbox_failed"), "sandbox_failed");
+                  if (!settled && !closed) finish(failed("sandbox_failed"));
                 },
               )
               .finally(() => {
@@ -241,11 +243,6 @@ export function createNodeCodeExecutor(
     } finally {
       if (timer) clearTimeout(timer);
       if (sampler) clearInterval(sampler);
-      if (onAbort) port.signal.removeEventListener("abort", onAbort);
-      for (const reply of replies) {
-        reply.worker = undefined;
-        reply.fail = undefined;
-      }
       replies.clear();
       if (worker) {
         // Keep the error listener until termination: an already queued OOM error

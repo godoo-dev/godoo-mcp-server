@@ -6,7 +6,8 @@ import {
 } from "@godoo-dev/client";
 import { EFFECTS, type Effect } from "@godoo-dev/client/effects";
 import { describe, expect, it, vi } from "vitest";
-import { CODE_RPC_LIMITS, createCodeGate } from "../../src/ts/code-policy.js";
+import { CODE_RPC_LIMITS } from "../../src/ts/code-contract.js";
+import { createCodeGate } from "../../src/ts/code-policy.js";
 import type { Operation } from "../../src/ts/types.js";
 
 const model = "res.partner";
@@ -391,7 +392,7 @@ describe("RPC outcome and lifecycle accounting", () => {
     expect(gate.status()).toBe("uncertain");
   });
 
-  it("reserves grant call budgets for queued attempts", async () => {
+  it("reserves queued grants from a detached policy snapshot", async () => {
     const pending = deferred<unknown>();
     const { op, call } = operation(() => pending.promise);
     const candidate = policy();
@@ -403,6 +404,8 @@ describe("RPC outcome and lifecycle accounting", () => {
     const first = gate.dispatch(rpc());
     const second = gate.dispatch(rpc());
     expect((await value(gate.dispatch(rpc()))).error.category).toBe("policy_denied");
+    candidate.targets[0].effective.declarations[0].effects = ["unknown"];
+    candidate.targets[0].grants.length = 0;
     pending.resolve(true);
     await Promise.all([first, second]);
     expect(call).toHaveBeenCalledTimes(2);

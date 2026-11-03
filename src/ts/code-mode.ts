@@ -3,8 +3,8 @@ import { EFFECTS, type Effect } from "@godoo-dev/client/effects";
 import { getSdkReference, SDK_REFERENCE } from "@godoo-dev/client/reference";
 import { z } from "zod";
 import { deliverArtifact } from "./artifacts.js";
-import { CODE_LIMITS } from "./code-contract.js";
-import { CODE_RPC_LIMITS, createCodeGate } from "./code-policy.js";
+import { CODE_LIMITS, CODE_RPC_LIMITS } from "./code-contract.js";
+import { createCodeGate } from "./code-policy.js";
 import { PublicError } from "./errors.js";
 import type { Registration } from "./types.js";
 
@@ -96,31 +96,26 @@ export function registerCodeMode({ register }: Registration): void {
       };
       if (!executed.ok) return envelope;
       // The host ledger is always inline. Only the completed program value is routed.
-      let content: Uint8Array;
+      let error = "result_serialization_failed";
       try {
-        content = new TextEncoder().encode(JSON.stringify(executed.result ?? null));
-      } catch {
+        const content = new TextEncoder().encode(JSON.stringify(executed.result ?? null));
+        const bound = args.max_return_bytes as number | null;
+        if (bound === null || content.byteLength <= bound)
+          return { ...envelope, result: executed.result ?? null };
+        error = "result_delivery_failed";
         return {
           ...envelope,
-          status: status === "uncertain" ? status : "failed",
-          error: "result_serialization_failed",
+          result: await deliverArtifact(
+            content,
+            { source: { tool: "code_execute" } },
+            operation.runtime,
+          ),
         };
-      }
-      const bound = args.max_return_bytes as number | null;
-      if (bound === null || content.byteLength <= bound)
-        return { ...envelope, result: executed.result ?? null };
-      try {
-        const artifact = await deliverArtifact(
-          content,
-          { source: { tool: "code_execute" } },
-          operation.runtime,
-        );
-        return { ...envelope, result: artifact };
       } catch {
         return {
           ...envelope,
           status: status === "uncertain" ? status : "failed",
-          error: "result_delivery_failed",
+          error,
         };
       }
     },

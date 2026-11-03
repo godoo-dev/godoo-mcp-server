@@ -5,7 +5,12 @@ import { build } from "esbuild";
 import ts from "typescript";
 import { meteredWasm } from "./meter-wasm.mjs";
 
-export async function codeInputs() {
+let prepared;
+export function codeInputs() {
+  prepared ??= prepareInputs();
+  return prepared;
+}
+async function prepareInputs() {
   const guest = await build({
     entryPoints: ["src/ts/code-guest.ts"],
     bundle: true,

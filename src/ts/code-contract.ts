@@ -25,3 +25,13 @@ export const CODE_LIMITS = Object.freeze({
   wasm_fuel: 20000000,
   concurrent_executions: 2,
 });
+
+/** Host-owned bounds for actual bridge traffic, including malformed attempts. */
+export const CODE_RPC_LIMITS = Object.freeze({
+  attempts: 64,
+  policyBytes: 1024 * 1024,
+  argumentBytes: 256 * 1024,
+  totalArgumentBytes: 1024 * 1024,
+  resultBytes: 1024 * 1024,
+  totalResultBytes: 4 * 1024 * 1024,
+});

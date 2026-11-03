@@ -9,18 +9,9 @@ import {
 } from "@godoo-dev/client";
 import { EFFECTS, type Effect, resolveRpcEffects } from "@godoo-dev/client/effects";
 import { z } from "zod";
+import { CODE_RPC_LIMITS, type CodePort } from "./code-contract.js";
 import { codeJsonDepth } from "./code-json.js";
 import type { Operation } from "./types.js";
-
-/** Limits are host-owned and apply to actual bridge traffic, including malformed attempts. */
-export const CODE_RPC_LIMITS = Object.freeze({
-  attempts: 64,
-  policyBytes: 1024 * 1024,
-  argumentBytes: 256 * 1024,
-  totalArgumentBytes: 1024 * 1024,
-  resultBytes: 1024 * 1024,
-  totalResultBytes: 4 * 1024 * 1024,
-});
 
 const name = z
   .string()
@@ -83,10 +74,7 @@ export interface CodeLedgerEntry {
   outcome: "acknowledged" | "rejected" | "policy_refused" | "not_dispatched" | "unknown";
   category?: string;
 }
-export interface CodeGate {
-  readonly signal: AbortSignal;
-  dispatch(encoded: string): Promise<string>;
-  close(reason: string): void;
+export interface CodeGate extends CodePort {
   snapshot(): CodeLedgerEntry[];
   status(): "success" | "failed" | "uncertain";
 }
@@ -235,7 +223,7 @@ export function createCodeGate(
   operation.signal.addEventListener("abort", onAbort, { once: true });
   if (operation.signal.aborted) onAbort();
 
-  const gate: CodeGate = {
+  return {
     signal,
     close,
     snapshot: () => entries.map((entry) => ({ ...entry, effects: [...entry.effects] })),
@@ -320,19 +308,7 @@ export function createCodeGate(
       let abortListener: (() => void) | undefined;
       try {
         signal.throwIfAborted();
-        // Recheck authority at dispatch. Policy and arguments are detached snapshots;
-        // the selected grant's call budget was already reserved on admission.
-        const actual = resolveRpcEffects(
-          request.model,
-          request.method,
-          target ? { effective: target.effective, addons: target.addons } : {},
-        );
-        if (!contains(callerEffects, actual) || !contains(matching.effects, actual))
-          return refuse(
-            "policy_denied",
-            "Host policy does not authorize this Odoo RPC and its effects",
-            true,
-          );
+        // Policy and arguments are detached snapshots; this grant was reserved on admission.
         if (pending.mutating) operation.markWrite();
         pending.dispatched = true;
         const cancelled = new Promise<never>((_resolve, reject) => {
@@ -416,5 +392,4 @@ export function createCodeGate(
       }
     },
   };
-  return gate;
 }
