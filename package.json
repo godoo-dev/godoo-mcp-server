@@ -32,7 +32,7 @@
   },
   "devDependencies": {
     "@aws-sdk/credential-provider-node": "3.972.92",
-    "@biomejs/biome": "2.4.15",
+    "@biomejs/biome": "2.6.4",
     "@cloudflare/workers-types": "5.20261102.1",
     "@godoo-dev/client": "file:vendor/godoo-ts-1ff8868/godoo-dev-client-0.8.0.tgz",
     "@godoo-dev/introspection": "file:vendor/godoo-ts-1ff8868/godoo-dev-introspection-0.2.4.tgz",
@@ -41,7 +41,7 @@
     "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
     "@modelcontextprotocol/node": "2.1.2",
     "@modelcontextprotocol/server": "2.4.0",
-    "@types/debug": "4.1.12",
+    "@types/debug": "4.1.13",
     "@types/markdown-it": "14.1.2",
     "@types/node": "25.9.1",
     "@types/ungap__structured-clone": "^1.2.0",
@@ -50,13 +50,13 @@
     "aws4fetch": "1.0.20",
     "binaryen": "125.0.0",
     "debug": "4.4.3",
-    "esbuild": "0.27.0",
+    "esbuild": "0.28.2",
     "markdown-it": "14.1.0",
     "miniflare": "5.20261101.0-beta",
     "quickjs-emscripten-core": "0.32.0",
     "typescript": "6.0.3",
     "vitest": "4.1.6",
     "wrangler": "4.156.1",
-    "zod": "4.6.6"
+    "zod": "4.6.7"
   }
 }
