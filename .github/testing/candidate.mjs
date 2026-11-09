@@ -481,7 +481,7 @@ export function buildImage(directory, majors = [18, 19]) {
   try {
     copyFileSync(join(ROOT, "Dockerfile"), join(context, "Dockerfile"));
     copyFileSync(checkFile(directory, candidate.package), join(context, "package.tgz"));
-    run("docker", ["build", "--pull", "--provenance=false", "--tag", tag, context]);
+    run("docker", ["build", "--load", "--pull", "--provenance=false", "--tag", tag, context]);
     const id = output("docker", ["image", "inspect", "--format", "{{.Id}}", tag]);
     run("docker", ["save", "--output", join(directory, "image.tar"), tag]);
     const archive = join(directory, "image.tar");
