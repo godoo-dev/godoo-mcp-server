@@ -1,0 +1,14 @@
+# Serena semantic navigation, pinned. Codex loads this file only for trusted projects.
+[mcp_servers.serena]
+command = "uvx"
+args = [
+  "--from", "serena-agent==2.1.0",
+  "serena", "start-mcp-server",
+  "--transport", "stdio",
+  "--context", "codex",
+  "--agent-interface", "tools",
+  "--enable-web-dashboard", "false",
+  "--open-web-dashboard", "false",
+  "--project-from-cwd",
+]
+startup_timeout_sec = 60

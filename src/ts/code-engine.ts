@@ -49,6 +49,22 @@ function dispatch(port: CodePort, encoded: string, settlement: Settlement): void
     .catch(() => undefined);
 }
 
+type Outcome = { ok: boolean; result?: unknown; error?: string };
+/** Validate and decode the guest's final JSON outcome. */
+function parseOutcome(encoded: string): Outcome {
+  if (bytes(encoded) > CODE_LIMITS.final_bytes) throw new Error("final_limit");
+  if (!codeJsonDepth(encoded)) throw new Error("final_structure_limit");
+  const parsed = JSON.parse(encoded);
+  return parsed?.ok === true
+    ? { ok: true, result: parsed.result }
+    : { ok: false, error: "guest_error" };
+}
+function failureOutcome(error: unknown, exhausted: boolean): Outcome {
+  if (exhausted) return { ok: false, error: "fuel_limit" };
+  const category = error instanceof Error ? error.message : "sandbox_failed";
+  return { ok: false, error: /^[a-z_]+$/.test(category) ? category : "sandbox_failed" };
+}
+
 export async function executeCode(
   program: string,
   uid: number,
@@ -73,7 +89,7 @@ export async function executeCode(
   let burstInterrupts = 0;
   let interrupts = 0;
   const pending = new Set<{ promise: QuickJSDeferredPromise; settlement: Settlement }>();
-  let outcome: { ok: boolean; result?: unknown; error?: string } = {
+  let outcome: Outcome = {
     ok: false,
     error: "sandbox_failed",
   };
@@ -176,24 +192,18 @@ export async function executeCode(
     });
     context.setProp(context.global, "__hostCall", bridge);
     bridge.dispose();
+    // Dispose a guest error handle and return the error to throw for it.
+    const guestError = (handle: { dispose(): void }) => {
+      handle.dispose();
+      return new Error(terminal || "guest_error");
+    };
     const evaluate = (source: string, allowance?: number) => {
       const result = enter(() => context.evalCode(source), allowance);
-      if (result.error) {
-        result.error.dispose();
-        throw new Error(terminal || "guest_error");
-      }
+      if (result.error) throw guestError(result.error);
       result.value.dispose();
     };
-    evaluate(
-      `globalThis.__identity={uid:${uid}}; globalThis.console={log(){},warn(){},error(){},info(){},debug(){}};`,
-    );
-    evaluate(guest, 250);
-    evaluate(
-      `globalThis.__codeOutcome=undefined;(async()=>{try{const result=await(async()=>{${program}\n})();globalThis.__codeOutcome=JSON.stringify({ok:true,result:result===undefined?null:result});}catch(e){globalThis.__codeOutcome=JSON.stringify({ok:false,error:"guest_error"});}})()`,
-    );
-    for (;;) {
-      if (port.signal.aborted || Date.now() - started > CODE_LIMITS.deadline_ms) stop("deadline");
-      if (terminal) throw new Error(terminal);
+    // Settlement only queues strings; resolve them into guest promises from this loop.
+    const settle = () => {
       for (const item of pending) {
         if (item.settlement.failed) throw new Error("bridge_failed");
         if (item.settlement.response === undefined) continue;
@@ -206,33 +216,41 @@ export async function executeCode(
           pending.delete(item);
         }
       }
+    };
+    // Run pending jobs, then read the guest's encoded outcome if it has one.
+    const step = (): string | undefined => {
       const jobs = enter(() => runtime?.executePendingJobs(20));
-      if (jobs?.error) {
-        jobs.error.dispose();
-        throw new Error(terminal || "guest_error");
-      }
+      if (jobs?.error) throw guestError(jobs.error);
       const value = enter(() => context.evalCode("globalThis.__codeOutcome"));
-      if (value.error) {
-        value.error.dispose();
-        throw new Error(terminal || "guest_error");
-      }
-      let encoded: string | undefined;
+      if (value.error) throw guestError(value.error);
       try {
         const kind = context.typeof(value.value);
         if (kind !== "undefined" && kind !== "string") throw new Error("guest_error");
-        if (kind === "string") encoded = context.getString(value.value);
+        return kind === "string" ? context.getString(value.value) : undefined;
       } finally {
         value.value.dispose();
       }
+    };
+    evaluate(
+      `globalThis.__identity={uid:${uid}}; globalThis.console={log(){},warn(){},error(){},info(){},debug(){}};`,
+    );
+    evaluate(guest, 250);
+    evaluate(
+      `globalThis.__codeOutcome=undefined;(async()=>{try{const result=await(async()=>{${program}\n})();globalThis.__codeOutcome=JSON.stringify({ok:true,result:result===undefined?null:result});}catch(e){globalThis.__codeOutcome=JSON.stringify({ok:false,error:"guest_error"});}})()`,
+    );
+    // One synchronous drive of the guest; returns its outcome once the program has finished.
+    const poll = (): Outcome | undefined => {
+      if (port.signal.aborted || Date.now() - started > CODE_LIMITS.deadline_ms) stop("deadline");
       if (terminal) throw new Error(terminal);
-      if (encoded !== undefined) {
-        if (bytes(encoded) > CODE_LIMITS.final_bytes) throw new Error("final_limit");
-        if (!codeJsonDepth(encoded)) throw new Error("final_structure_limit");
-        const parsed = JSON.parse(encoded);
-        outcome =
-          parsed?.ok === true
-            ? { ok: true, result: parsed.result }
-            : { ok: false, error: "guest_error" };
+      settle();
+      const encoded = step();
+      if (terminal) throw new Error(terminal);
+      return encoded === undefined ? undefined : parseOutcome(encoded);
+    };
+    for (;;) {
+      const finished = poll();
+      if (finished) {
+        outcome = finished;
         break;
       }
       // Yield to HTTP, cancellation and siblings even during a promise-job storm.
@@ -240,11 +258,7 @@ export async function executeCode(
     }
   } catch (error) {
     exhausted = fuelExports?.__godoo_get_fuel() === 0;
-    const category = error instanceof Error ? error.message : "sandbox_failed";
-    outcome = {
-      ok: false,
-      error: exhausted ? "fuel_limit" : /^[a-z_]+$/.test(category) ? category : "sandbox_failed",
-    };
+    outcome = failureOutcome(error, exhausted);
   } finally {
     port.signal.removeEventListener("abort", onAbort);
     port.close(terminal || "execution_finished");

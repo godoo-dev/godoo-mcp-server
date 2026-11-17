@@ -30,7 +30,7 @@ from httpx import AsyncClient
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
-from .odoo_proof import observe, requested_major
+from .odoo_proof import append_json_line, observe, requested_major
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable
@@ -43,6 +43,132 @@ STANDARD_MCP_HEADERS: dict[str, str] = {
     "accept": "application/json, text/event-stream",
     "mcp-protocol-version": "2026-07-28",
 }
+
+
+def _server_environment(artifact_store, port: int, code_policy: dict | None) -> dict[str, str]:
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("ODOO_") and key not in {"DEBUG", "AWS_SESSION_TOKEN"}
+    }
+    environment.update(artifact_store.environment)
+    environment.update(HOST="127.0.0.1", PORT=str(port))
+    if code_policy is not None:
+        environment["ODOO_CODE_POLICY"] = json.dumps(code_policy)
+    return environment
+
+
+def _server_command(
+    image: str | None, container: str | None, artifact_store, code_policy: dict | None, root: Path
+) -> list[str]:
+    if not image:
+        command = shlex.split(os.environ.get("MCP_SERVER_COMMAND", ""))
+        return command or ["node", str(root / "dist" / "node.mjs")]
+    command = [
+        "docker",
+        "create",
+        "--name",
+        container,
+        "--network",
+        "host",
+    ]
+    for key in [
+        *artifact_store.environment,
+        "HOST",
+        "PORT",
+        *(["ODOO_CODE_POLICY"] if code_policy is not None else []),
+    ]:
+        command += [
+            "--env",
+            "NODE_EXTRA_CA_CERTS=/tmp/mcp-acceptance-ca.pem"
+            if key == "NODE_EXTRA_CA_CERTS"
+            else key,
+        ]
+    return [*command, image]
+
+
+async def _docker(environment: dict[str, str], *arguments) -> str:
+    result = await asyncio.to_thread(
+        subprocess.run,
+        ["docker", *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+        timeout=30,
+    )
+    return result.stdout.strip()
+
+
+async def _wait_until_healthy(process, url: str, log_path: Path) -> None:
+    async with AsyncClient(timeout=1) as client:
+        deadline = asyncio.get_running_loop().time() + 45
+        while asyncio.get_running_loop().time() < deadline:
+            if process.returncode is not None:
+                raise AssertionError(log_path.read_text())
+            try:
+                if (await client.get(f"{url}/healthz")).status_code == 200:
+                    break
+            except httpx.HTTPError:
+                pass
+            await asyncio.sleep(0.1)
+        else:
+            raise AssertionError(f"MCP health check timed out: {log_path.read_text()}")
+
+
+async def _verify_image(docker, image: str, container: str, expected_version: str | None) -> None:
+    assert expected_version, "MCP_EXPECTED_VERSION is required for an image trial"
+    expected_image = await docker("image", "inspect", "--format", "{{.Id}}", image)
+    observed_image = await docker("inspect", "--format", "{{.Image}}", container)
+    assert observed_image == expected_image, "Running MCP image differs from candidate"
+    uid = int(await docker("exec", container, "id", "-u"))
+    assert uid > 0, "The candidate MCP server must run as non-root"
+    version = await docker("exec", container, "godoo-mcp-server", "--version")
+    assert version == expected_version, "Running MCP version differs from candidate"
+    record = {
+        "expected_image": expected_image,
+        "observed_image": observed_image,
+        "container_id": await docker("inspect", "--format", "{{.Id}}", container),
+        "uid": uid,
+        "version": version,
+    }
+    facts = os.environ.get("MCP_IMAGE_FACTS")
+    if facts:
+        await asyncio.to_thread(append_json_line, Path(facts), record)
+    print("MCP_IMAGE_PROOF", json.dumps(record), flush=True)
+
+
+async def _verify_local_version(
+    command: list[str], root: Path, environment: dict[str, str], expected_version: str
+) -> None:
+    version_process = await asyncio.create_subprocess_exec(
+        *command,
+        "--version",
+        cwd=root,
+        env=environment,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, _stderr = await asyncio.wait_for(version_process.communicate(), timeout=15)
+    assert version_process.returncode == 0
+    assert stdout.decode().strip() == expected_version
+
+
+async def _stop_server(process, container: str | None) -> None:
+    if container:
+        await asyncio.to_thread(
+            subprocess.run,
+            ["docker", "rm", "-f", container],
+            capture_output=True,
+            timeout=15,
+        )
+    if process is not None and process.returncode is None:
+        process.terminate()
+        try:
+            await asyncio.wait_for(process.wait(), timeout=5)
+        except TimeoutError:
+            process.kill()
+            await process.wait()
 
 
 @pytest.fixture
@@ -58,48 +184,9 @@ def mcp_process_factory(tmp_path: Path, artifact_store) -> Callable[..., Any]:
         root = Path(__file__).resolve().parents[2]
         image = os.environ.get("MCP_CANDIDATE_IMAGE")
         container = f"mcp-acceptance-{uuid.uuid4().hex}" if image else None
-        environment = {
-            key: value
-            for key, value in os.environ.items()
-            if not key.startswith("ODOO_") and key not in {"DEBUG", "AWS_SESSION_TOKEN"}
-        }
-        environment.update(artifact_store.environment)
-        environment.update(HOST="127.0.0.1", PORT=str(port))
-        if code_policy is not None:
-            environment["ODOO_CODE_POLICY"] = json.dumps(code_policy)
-        if image:
-            command = [
-                "docker",
-                "create",
-                "--name",
-                container,
-                "--network",
-                "host",
-            ]
-            for key in [*artifact_store.environment, "HOST", "PORT", *(["ODOO_CODE_POLICY"] if code_policy is not None else [])]:
-                command += [
-                    "--env",
-                    "NODE_EXTRA_CA_CERTS=/tmp/mcp-acceptance-ca.pem"
-                    if key == "NODE_EXTRA_CA_CERTS"
-                    else key,
-                ]
-            command += [image]
-        else:
-            command = shlex.split(os.environ.get("MCP_SERVER_COMMAND", ""))
-            if not command:
-                command = ["node", str(root / "dist" / "node.mjs")]
-
-        async def docker(*arguments):
-            result = await asyncio.to_thread(
-                subprocess.run,
-                ["docker", *arguments],
-                check=True,
-                capture_output=True,
-                text=True,
-                env=environment,
-                timeout=30,
-            )
-            return result.stdout.strip()
+        environment = _server_environment(artifact_store, port, code_policy)
+        command = _server_command(image, container, artifact_store, code_policy, root)
+        docker = partial(_docker, environment)
 
         with log_path.open("wb") as log_file:
             process = None
@@ -123,73 +210,15 @@ def mcp_process_factory(tmp_path: Path, artifact_store) -> Callable[..., Any]:
                 )
                 url = f"http://127.0.0.1:{port}"
                 handle = OwnedProcess(process, container)
-                async with AsyncClient(timeout=1) as client:
-                    deadline = asyncio.get_running_loop().time() + 45
-                    while asyncio.get_running_loop().time() < deadline:
-                        if process.returncode is not None:
-                            raise AssertionError(log_path.read_text())
-                        try:
-                            if (await client.get(f"{url}/healthz")).status_code == 200:
-                                break
-                        except httpx.HTTPError:
-                            pass
-                        await asyncio.sleep(0.1)
-                    else:
-                        raise AssertionError(f"MCP health check timed out: {log_path.read_text()}")
+                await _wait_until_healthy(process, url, log_path)
                 expected_version = os.environ.get("MCP_EXPECTED_VERSION")
                 if image:
-                    assert expected_version, "MCP_EXPECTED_VERSION is required for an image trial"
-                    expected_image = await docker("image", "inspect", "--format", "{{.Id}}", image)
-                    observed_image = await docker("inspect", "--format", "{{.Image}}", container)
-                    assert observed_image == expected_image, (
-                        "Running MCP image differs from candidate"
-                    )
-                    uid = int(await docker("exec", container, "id", "-u"))
-                    assert uid > 0, "The candidate MCP server must run as non-root"
-                    version = await docker("exec", container, "godoo-mcp-server", "--version")
-                    assert version == expected_version, "Running MCP version differs from candidate"
-                    record = {
-                        "expected_image": expected_image,
-                        "observed_image": observed_image,
-                        "container_id": await docker("inspect", "--format", "{{.Id}}", container),
-                        "uid": uid,
-                        "version": version,
-                    }
-                    facts = os.environ.get("MCP_IMAGE_FACTS")
-                    if facts:
-                        with Path(facts).open("a") as stream:
-                            stream.write(json.dumps(record) + "\n")
-                    print("MCP_IMAGE_PROOF", json.dumps(record), flush=True)
+                    await _verify_image(docker, image, container, expected_version)
                 elif expected_version:
-                    version_process = await asyncio.create_subprocess_exec(
-                        *command,
-                        "--version",
-                        cwd=root,
-                        env=environment,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    stdout, _stderr = await asyncio.wait_for(
-                        version_process.communicate(), timeout=15
-                    )
-                    assert version_process.returncode == 0
-                    assert stdout.decode().strip() == expected_version
+                    await _verify_local_version(command, root, environment, expected_version)
                 yield url, log_path, handle
             finally:
-                if container:
-                    await asyncio.to_thread(
-                        subprocess.run,
-                        ["docker", "rm", "-f", container],
-                        capture_output=True,
-                        timeout=15,
-                    )
-                if process is not None and process.returncode is None:
-                    process.terminate()
-                    try:
-                        await asyncio.wait_for(process.wait(), timeout=5)
-                    except TimeoutError:
-                        process.kill()
-                        await process.wait()
+                await _stop_server(process, container)
 
     return start
 

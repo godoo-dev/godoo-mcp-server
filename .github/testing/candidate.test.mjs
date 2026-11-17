@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
@@ -536,4 +536,283 @@ test("partial publication resumes only missing objects after exact byte reconcil
     ),
     /different or unverifiable bytes/,
   );
+});
+
+test("candidate verification reports each identity failure in check order", (t) => {
+  const verify = (state, options = {}) =>
+    verifyCandidate(state.directory, { root: state.root, ...options });
+  const cases = [
+    [(state) => Object.assign(state.candidate, { schema: 1 }), /source identity differs/],
+    [(state) => Object.assign(state.candidate, { version: "0.4.0" }), /package identity mismatch/],
+    [(state) => Object.assign(state.candidate, { name: "other" }), /package identity mismatch/],
+    [
+      (state) => Object.assign(state.candidate.locks, { "package.json": "0".repeat(64) }),
+      /dependency lock mismatch/,
+    ],
+    [
+      (state) => delete state.candidate.locks["tests/acceptance/uv.lock"],
+      /Missing dependency lock/,
+    ],
+    [(state) => delete state.candidate.locks, /Missing dependency lock/],
+    [
+      (state) => Object.assign(state.candidate.bundles, { "node.mjs": "0".repeat(64) }),
+      /Packed runtime differs from tested bundle/,
+    ],
+    [(state) => delete state.candidate.bundles, /Packed runtime differs from tested bundle/],
+  ];
+  for (const [change, expected] of cases) {
+    const state = fixture(t);
+    change(state);
+    state.save();
+    assert.throws(() => verify(state), expected);
+  }
+  const state = fixture(t);
+  writeFileSync(
+    join(state.staging, "package/package.json"),
+    JSON.stringify({ name: "@godoo-dev/mcp-server", version: "9.9.9" }),
+  );
+  execFileSync("tar", [
+    "-czf",
+    join(state.directory, "package.tgz"),
+    "-C",
+    state.staging,
+    "package",
+  ]);
+  state.candidate.package = fileRecord(join(state.directory, "package.tgz"));
+  state.save();
+  assert.throws(() => verify(state), /Packed metadata differs/);
+});
+
+test("complete candidate verification reports each proof failure", (t) => {
+  const verify = (state) => verifyCandidate(state.directory, { root: state.root, complete: true });
+  const qualification = (state, major, change) => {
+    const path = join(state.directory, `odoo-${major}.json`);
+    const document = JSON.parse(readFileSync(path, "utf8"));
+    change(document);
+    writeFileSync(path, JSON.stringify(document));
+  };
+  const cases = [
+    [(state) => (state.candidate.image.tag += "-other"), /single tested image tag/],
+    [(state) => (state.candidate.odoo_majors = [18]), /supported Odoo qualifications/],
+    [(state) => delete state.candidate.odoo_majors, /supported Odoo qualifications/],
+    [(state) => (state.candidate.odoo_majors = [17, 18, 19]), /supported Odoo qualifications/],
+    [(state) => (state.candidate.odoo_majors = [18, 19, 18.5]), /supported Odoo qualifications/],
+    [(state) => (state.candidate.odoo_majors = [18, 19, 19]), /supported Odoo qualifications/],
+    [(state) => (state.candidate.odoo_majors = [18, 19, 20]), /ENOENT/],
+    [
+      (state) => qualification(state, 19, (document) => (document.package_sha256 = "x")),
+      /another candidate/,
+    ],
+    [
+      (state) => qualification(state, 19, (document) => (document.worker_sha256 = "x")),
+      /another candidate/,
+    ],
+    [
+      (state) => qualification(state, 18, (document) => (document.proofs.extra = {})),
+      /runtime qualification suite/,
+    ],
+    [
+      (state) => qualification(state, 18, (document) => (document.proofs.source.tests = 2)),
+      /test count mismatch/,
+    ],
+    [
+      (state) =>
+        qualification(state, 18, (document) => (document.proofs.installed.facts.sha256 = "x")),
+      /hash-identified direct child/,
+    ],
+    [
+      (state) => writeFileSync(join(state.directory, "odoo-19-source-facts.jsonl"), ""),
+      /hash mismatch: odoo-19-source-facts.jsonl/,
+    ],
+    [
+      (state) => qualification(state, 19, (document) => delete document.proofs.image.image_facts),
+      /hash-identified direct child/,
+    ],
+    [(state) => delete state.candidate.proofs.controls, /hash-identified direct child/],
+    [(state) => delete state.candidate.proofs, /hash-identified direct child/],
+    [
+      (state) => {
+        const path = join(state.directory, "offline-identity.json");
+        writeFileSync(path, JSON.stringify({ source: state.candidate.source, bundles: {} }));
+        state.candidate.proofs.identity = fileRecord(path);
+      },
+      /Offline proof used another source or runtime bundle/,
+    ],
+  ];
+  for (const [change, expected] of cases) {
+    const state = fixture(t);
+    complete(state);
+    change(state);
+    state.save();
+    assert.throws(() => verify(state), expected);
+  }
+});
+
+test("release verification rejects dirty sources after the tag check", (t) => {
+  const state = fixture(t);
+  state.candidate.source.dirty = true;
+  state.save();
+  assert.throws(
+    () => verifyCandidate(state.directory, { root: state.root, releaseRef: "refs/tags/v0.3.0" }),
+    /source identity differs/,
+  );
+  writeFileSync(join(state.root, "untracked.txt"), "dirty");
+  state.candidate.source = sourceIdentity(state.root);
+  state.save();
+  assert.throws(
+    () => verifyCandidate(state.directory, { root: state.root, releaseRef: "refs/tags/v0.4.0" }),
+    /immutable version tag/,
+  );
+  assert.throws(
+    () => verifyCandidate(state.directory, { root: state.root, releaseRef: "refs/tags/v0.3.0" }),
+    /clean matching tag candidate/,
+  );
+});
+
+test("registry preflight validates identity and reconciles npm states", async (t) => {
+  const state = fixture(t);
+  addArchive(state);
+  const { options } = registries(state);
+  for (const changes of [
+    { repository: "Upper/case" },
+    { repository: "" },
+    { user: "" },
+    { credential: "" },
+  ]) {
+    await assert.rejects(
+      registryPreflight(state.candidate, state.directory, { ...options, ...changes }),
+      /Valid registry identity and read authorization are required/,
+    );
+  }
+  await assert.rejects(
+    registryPreflight({ ...state.candidate, version: "-bad" }, state.directory, options),
+    /Valid registry identity/,
+  );
+  const missing = registries(state, { npm: { status: 404, body: { error: "Not found" } } });
+  assert.deepEqual(await registryPreflight(state.candidate, state.directory, missing.options), {
+    package: "absent",
+    image: "absent",
+  });
+  assert.equal(missing.seen.length, 3);
+  // A null versions document passes the object check and fails on lookup, still before GHCR.
+  const nullVersions = registries(state, { npm: { status: 200, body: { versions: null } } });
+  await assert.rejects(
+    registryPreflight(state.candidate, state.directory, nullVersions.options),
+    TypeError,
+  );
+  assert.equal(nullVersions.seen.length, 1);
+  for (const npm of [
+    { status: 200, body: {} },
+    { status: 500, body: {} },
+  ]) {
+    const unknown = registries(state, { npm });
+    await assert.rejects(
+      registryPreflight(state.candidate, state.directory, unknown.options),
+      /npm registry state is unknown/,
+    );
+    assert.equal(unknown.seen.length, 1);
+  }
+  const conflicting = registries(state, {
+    npm: {
+      status: 200,
+      body: { versions: { "0.3.0": { name: "other", version: "0.3.0", dist: {} } } },
+    },
+  });
+  await assert.rejects(
+    registryPreflight(state.candidate, state.directory, conflicting.options),
+    /different or unverifiable bytes/,
+  );
+  assert.equal(conflicting.seen.length, 1);
+  const unreachable = { ...options, fetch: async () => Promise.reject(new Error("offline")) };
+  await assert.rejects(
+    registryPreflight(state.candidate, state.directory, unreachable),
+    /^Error: Registry response could not be verified; publication stopped$/,
+  );
+  const tokenless = registries(state, { token: { status: 200, body: { token: "" } } });
+  await assert.rejects(
+    registryPreflight(state.candidate, state.directory, tokenless.options),
+    /GHCR read-token request failed/,
+  );
+  assert.equal(tokenless.seen.length, 2);
+  const otherImage = registries(state, {
+    image: { status: 200, body: { config: { digest: "sha256:other" } } },
+  });
+  await assert.rejects(
+    registryPreflight(state.candidate, state.directory, otherImage.options),
+    /GHCR version exists with different bytes/,
+  );
+});
+
+function cli(args, env = {}) {
+  const result = spawnSync(
+    process.execPath,
+    [join(ROOT, ".github/testing/candidate.mjs"), ...args],
+    {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+    },
+  );
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+}
+
+test("command line dispatch reports usage and early refusals with exit status 1", (t) => {
+  const outsideDirectory = temporary(t);
+  const usage = "Expected candidate command and required --directory/--evidence/--major options\n";
+  for (const args of [
+    [],
+    ["unknown"],
+    ["start-offline"],
+    ["finish-offline"],
+    ["package"],
+    ["image"],
+    ["odoo", "--directory", outsideDirectory],
+    ["archive"],
+    ["verify"],
+    ["preflight", "--directory", outsideDirectory],
+    ["promote", "--release-ref", "refs/tags/v0.0.0"],
+  ])
+    assert.deepEqual(cli(args), { status: 1, stdout: "", stderr: usage }, args.join(" "));
+  const inside = "Candidate/evidence must be outside source checkout\n";
+  assert.deepEqual(cli(["start-offline", "--evidence", "."]), {
+    status: 1,
+    stdout: "",
+    stderr: inside,
+  });
+  assert.deepEqual(cli(["package", "--directory", join(ROOT, "candidate-inside")]), {
+    status: 1,
+    stdout: "",
+    stderr: inside,
+  });
+  assert.deepEqual(cli(["package", "--directory", join(outsideDirectory, "candidate")]), {
+    status: 1,
+    stdout: "",
+    stderr: "Packaging requires verified offline evidence\n",
+  });
+  for (const env of [
+    { DISPATCH_REF: "refs/heads/other", RELEASE_TAG: "v1.2.3" },
+    { DISPATCH_REF: "refs/heads/main", RELEASE_TAG: "1.2.3" },
+    { DISPATCH_REF: "refs/heads/main", RELEASE_TAG: "" },
+  ])
+    assert.deepEqual(cli(["resolve-release"], env), {
+      status: 1,
+      stdout: "",
+      stderr: "Dispatch an immutable version tag from main\n",
+    });
+  for (const command of ["verify", "image", "archive", "odoo"]) {
+    const result = cli([command, "--directory", outsideDirectory, "--major", "18"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /ENOENT.*candidate\.json/);
+  }
+  writeFileSync(join(outsideDirectory, "candidate.json"), JSON.stringify({ schema: 1 }));
+  for (const args of [
+    ["verify", "--directory", outsideDirectory],
+    ["preflight", "--directory", outsideDirectory, "--release-ref", "refs/tags/v0.0.0"],
+    ["promote", "--directory", outsideDirectory, "--release-ref", "refs/tags/v0.0.0"],
+  ])
+    assert.deepEqual(cli(args), {
+      status: 1,
+      stdout: "",
+      stderr: "Candidate source identity differs from checkout\n",
+    });
 });

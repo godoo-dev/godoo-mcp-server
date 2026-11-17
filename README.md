@@ -14,12 +14,12 @@ organization overview.
 
 ## Run from source
 
-Use Node 24+ and pnpm 11.1.3. From the checkout root:
+Use Node 24+ with corepack (`corepack pnpm` provides pnpm 11.1.3). From the checkout root:
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm build
-HOST=127.0.0.1 PORT=8000 pnpm start
+corepack pnpm install --frozen-lockfile
+corepack pnpm build
+HOST=127.0.0.1 PORT=8000 corepack pnpm start
 ```
 
 The Streamable HTTP endpoint is `/mcp`; `/healthz` is an unauthenticated health

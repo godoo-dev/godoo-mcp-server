@@ -21,25 +21,31 @@ async function prepareInputs() {
     legalComments: "inline",
   });
   const declarations = {};
-  for (const name of ["client", "introspection"]) {
-    const root = dirname(fileURLToPath(import.meta.resolve(`@godoo-dev/${name}/portable`)));
-    const directories = name === "client" ? [root, dirname(root)] : [root];
-    for (const directory of directories) {
-      for (const file of await readdir(directory)) {
-        if (!file.endsWith(".d.mts")) continue;
-        if (name === "client" && directory !== root && file === "index.d.mts") continue;
-        const source = await readFile(join(directory, file), "utf8");
-        const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
-        for (const statement of ast.statements) {
-          if (!statement.name || !ts.isIdentifier(statement.name)) continue;
-          const key = statement.name.text;
-          // Prefer the credential-free portable client declarations over the network root.
-          declarations[key] ??= statement.getFullText(ast).trim();
-        }
-      }
+  for (const name of ["client", "introspection"]) await collectPackage(declarations, name);
+  return { "godoo:code-guest": guest.outputFiles[0].text, "godoo:sdk-declarations": declarations };
+}
+
+async function collectPackage(declarations, name) {
+  const root = dirname(fileURLToPath(import.meta.resolve(`@godoo-dev/${name}/portable`)));
+  const directories = name === "client" ? [root, dirname(root)] : [root];
+  for (const directory of directories) {
+    for (const file of await readdir(directory)) {
+      if (!file.endsWith(".d.mts")) continue;
+      if (name === "client" && directory !== root && file === "index.d.mts") continue;
+      await collectDeclarations(declarations, join(directory, file), file);
     }
   }
-  return { "godoo:code-guest": guest.outputFiles[0].text, "godoo:sdk-declarations": declarations };
+}
+
+async function collectDeclarations(declarations, path, file) {
+  const source = await readFile(path, "utf8");
+  const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+  for (const statement of ast.statements) {
+    if (!statement.name || !ts.isIdentifier(statement.name)) continue;
+    const key = statement.name.text;
+    // Prefer the credential-free portable client declarations over the network root.
+    declarations[key] ??= statement.getFullText(ast).trim();
+  }
 }
 
 export async function codeAssets(worker = false) {

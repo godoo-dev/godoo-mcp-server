@@ -19,3 +19,7 @@ coverage/
 # Local mafe-si configuration and agent working material
 .mafe-si.toml
 .scratch/
+.corepack/
+
+# Serena project state
+.serena/

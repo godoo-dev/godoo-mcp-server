@@ -1,6 +1,9 @@
 # Develop the operational MCP server
 
-Use Node 24.22.2, pnpm 11.1.3, `just` and the committed `pnpm-lock.yaml`.
+Use Node 24.22.2 with corepack, uv and the committed lockfiles. pnpm 11.1.3
+comes from `packageManager` through corepack and `just` from the `rust-just`
+devDependency; after `corepack pnpm install --frozen-lockfile`, run recipes with
+`corepack pnpm exec just <recipe>`.
 The independent Odoo acceptance driver uses Python 3.14.7 and uv 0.12.5;
 its separate frozen project lives in `tests/acceptance/`. Python is not part of
 the deployed MCP runtime.
@@ -11,7 +14,11 @@ pnpm check
 node --test .github/testing/candidate.test.mjs
 ```
 
-`pnpm check` runs strict TypeScript, Biome, runtime builds and Vitest.
+`pnpm check` runs strict TypeScript, Biome, runtime builds and Vitest. `just lint`
+adds Ruff format and lint for `tests/acceptance`. Complexity is blocking: Biome
+`noExcessiveCognitiveComplexity` at its default 15, Ruff `C901` at 10.
+`just setup-nav` sets up semantic navigation (Claude Code TypeScript LSP plugin,
+Serena for Codex); see the verification skill.
 Tests cover public schemas, friendly properties, storage signatures and rollback,
 request isolation and the actual built Worker in Miniflare without `nodejs_compat`.
 `just r2` selects storage/artifact/native Worker checks. OpenSSL is required by

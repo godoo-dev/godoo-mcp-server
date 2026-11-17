@@ -88,6 +88,25 @@ function element(document: string, name: string): string | undefined {
   return match ? xml(match[1]) : undefined;
 }
 
+function* listedObjects(document: string): Generator<StoredObject> {
+  for (const match of document.matchAll(/<Contents(?:\s[^>]*)?>([\s\S]*?)<\/Contents>/g)) {
+    const key = element(match[1], "Key");
+    if (key === undefined) throw failure();
+    yield { key, lastModified: checkedDate(element(match[1], "LastModified")) };
+  }
+}
+
+/** The cursor for the following page; truncated listings must advance. */
+function nextCursor(
+  truncated: boolean,
+  next: string | undefined,
+  cursor: string | undefined,
+): string | undefined {
+  if (!truncated) return undefined;
+  if (!next || next === cursor) throw failure();
+  return next;
+}
+
 export type AwsCredentialsResolver = () => Promise<{
   accessKeyId: string;
   secretAccessKey: string;
@@ -187,15 +206,12 @@ function s3Storage(
         const document = await response.text();
         signal?.throwIfAborted();
         if (!/<ListBucketResult(?:\s|>)/.test(document)) throw failure();
-        for (const match of document.matchAll(/<Contents(?:\s[^>]*)?>([\s\S]*?)<\/Contents>/g)) {
-          const key = element(match[1], "Key");
-          if (key === undefined) throw failure();
-          yield { key, lastModified: checkedDate(element(match[1], "LastModified")) };
-        }
-        const next = element(document, "NextContinuationToken");
-        if (element(document, "IsTruncated") === "true" && (!next || next === cursor))
-          throw failure();
-        cursor = element(document, "IsTruncated") === "true" ? next : undefined;
+        yield* listedObjects(document);
+        cursor = nextCursor(
+          element(document, "IsTruncated") === "true",
+          element(document, "NextContinuationToken"),
+          cursor,
+        );
       } while (cursor);
     },
     async delete(key, signal) {
@@ -498,8 +514,7 @@ export function createR2Storage(
         signal?.throwIfAborted();
         for (const object of result.objects)
           yield { key: object.key, lastModified: object.uploaded };
-        if (result.truncated && (!result.cursor || result.cursor === cursor)) throw failure();
-        cursor = result.truncated ? result.cursor : undefined;
+        cursor = nextCursor(result.truncated, result.cursor, cursor);
       } while (cursor);
     },
     async delete(key, signal) {

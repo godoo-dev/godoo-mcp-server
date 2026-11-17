@@ -126,16 +126,61 @@ function sameJson(left: unknown, right: unknown): boolean {
     if (!pair) break;
     const [a, b] = pair;
     if (a === b) continue;
-    if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
-    if (Array.isArray(a) !== Array.isArray(b)) return false;
-    const entries = Object.entries(a);
-    if (entries.length !== Object.keys(b).length) return false;
-    for (const [key, value] of entries) {
-      if (!Object.hasOwn(b, key)) return false;
-      pending.push([value, (b as Record<string, unknown>)[key]]);
-    }
+    if (!queueChildren(a, b, pending)) return false;
   }
   return true;
+}
+/** Queue the child pairs of two unequal values; false when their containers already differ. */
+function queueChildren(a: unknown, b: unknown, pending: [unknown, unknown][]): boolean {
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const entries = Object.entries(a);
+  if (entries.length !== Object.keys(b).length) return false;
+  for (const [key, value] of entries) {
+    if (!Object.hasOwn(b, key)) return false;
+    pending.push([value, (b as Record<string, unknown>)[key]]);
+  }
+  return true;
+}
+type RpcRequest = z.infer<typeof requestSchema>;
+function oversizedArgument(encoded: unknown): boolean {
+  return (
+    typeof encoded !== "string" ||
+    encoded.length > CODE_RPC_LIMITS.argumentBytes ||
+    bytes(encoded) > CODE_RPC_LIMITS.argumentBytes
+  );
+}
+function parseRequest(encoded: string): RpcRequest | undefined {
+  try {
+    if (!codeJsonDepth(encoded)) throw new Error("Invalid JSON depth");
+    const request = requestSchema.parse(JSON.parse(encoded));
+    if (
+      Object.hasOwn(request.kwargs, "context") &&
+      (request.kwargs.context === null ||
+        typeof request.kwargs.context !== "object" ||
+        Array.isArray(request.kwargs.context))
+    )
+      throw new Error("Invalid context");
+    return request;
+  } catch {
+    return;
+  }
+}
+function findGrant(
+  grants: readonly Grant[] | undefined,
+  used: ReadonlyMap<Grant, number>,
+  request: RpcRequest,
+  effects: readonly Effect[],
+): Grant | undefined {
+  return grants?.find(
+    (candidate) =>
+      candidate.model === request.model &&
+      candidate.method === request.method &&
+      contains(candidate.effects, effects) &&
+      (used.get(candidate) ?? 0) < (candidate.maxCalls ?? CODE_RPC_LIMITS.attempts) &&
+      (candidate.args === undefined || sameJson(candidate.args, request.args)) &&
+      (candidate.kwargs === undefined || sameJson(candidate.kwargs, request.kwargs)),
+  );
 }
 
 function contains(ceiling: readonly Effect[], actual: readonly Effect[]): boolean {
@@ -195,10 +240,8 @@ export function createCodeGate(
   let active: Pending | undefined;
   const queued: { pending: Pending; resolve: (admitted: boolean) => void }[] = [];
 
-  function close(reason: string): void {
-    if (closed) return;
-    closed = true;
-    if (reason !== "execution_finished") failed = true;
+  /** Freeze the outcome of the attempt holding the dispatch slot when the gate closes. */
+  function finalizeActive(): void {
     if (active?.dispatched) {
       active.entry.outcome = "unknown";
       active.entry.category = active.mutating ? "unknown_write" : "connection_failed";
@@ -208,6 +251,12 @@ export function createCodeGate(
       active.entry.category = "gate_closed";
       failed = true;
     }
+  }
+  function close(reason: string): void {
+    if (closed) return;
+    closed = true;
+    if (reason !== "execution_finished") failed = true;
+    finalizeActive();
     for (const item of queued) {
       item.pending.entry.category = "gate_closed";
       item.resolve(false);
@@ -223,82 +272,158 @@ export function createCodeGate(
   operation.signal.addEventListener("abort", onAbort, { once: true });
   if (operation.signal.aborted) onAbort();
 
+  function refuse(
+    entry: CodeLedgerEntry,
+    category: string,
+    message: string,
+    policyRefusal = false,
+  ): string {
+    failed = true;
+    entry.outcome = policyRefusal ? "policy_refused" : "not_dispatched";
+    entry.category = category;
+    return failure(category, message);
+  }
+  /** Record one attempt and decide admission; a string is the refusal envelope. */
+  function admit(encoded: string): { request: RpcRequest; pending: Pending } | string {
+    if (entries.length >= CODE_RPC_LIMITS.attempts) {
+      close("rpc_limit");
+      return failure("rpc_limit", "Code Mode RPC attempt limit exceeded");
+    }
+    const entry: CodeLedgerEntry = {
+      id: entries.length + 1,
+      model: "",
+      method: "",
+      effects: [],
+      outcome: "not_dispatched",
+    };
+    entries.push(entry);
+    const request = readRequest(entry, encoded);
+    if (typeof request === "string") return request;
+    return authorize(entry, request);
+  }
+  function readRequest(entry: CodeLedgerEntry, encoded: string): RpcRequest | string {
+    if (closed || signal.aborted)
+      return refuse(entry, "gate_closed", "Code Mode RPC dispatch is closed");
+    argumentBytes += typeof encoded === "string" ? bytes(encoded) : 0;
+    if (oversizedArgument(encoded) || argumentBytes > CODE_RPC_LIMITS.totalArgumentBytes) {
+      close("argument_limit");
+      return refuse(entry, "argument_limit", "Code Mode RPC arguments exceed the size limit");
+    }
+    return (
+      parseRequest(encoded) ?? refuse(entry, "invalid_rpc", "Invalid Code Mode model RPC request")
+    );
+  }
+  function authorize(
+    entry: CodeLedgerEntry,
+    request: RpcRequest,
+  ): { request: RpcRequest; pending: Pending } | string {
+    entry.model = request.model;
+    entry.method = request.method;
+    entry.effects = resolveRpcEffects(
+      request.model,
+      request.method,
+      target ? { effective: target.effective, addons: target.addons } : {},
+    );
+    const matching = findGrant(target?.grants, used, request, entry.effects);
+    if (!requestedValid || !contains(callerEffects, entry.effects) || !matching)
+      return refuse(
+        entry,
+        "policy_denied",
+        "Host policy does not authorize this Odoo RPC and its effects",
+        true,
+      );
+    const pending = { entry, dispatched: false, mutating: effectful(entry.effects) };
+    // Reserve this exact grant when admitting the attempt, including queued work.
+    // Guest Promise.all is supported, while actual transport dispatch stays serial.
+    used.set(matching, (used.get(matching) ?? 0) + 1);
+    return { request, pending };
+  }
+  /** Odoo has acknowledged the RPC. Delivery/serialization failures cannot undo that fact. */
+  function acknowledge(pending: Pending, value: unknown): string {
+    const { entry } = pending;
+    if (closed) return failure(entry.category ?? "gate_closed", "Code Mode RPC dispatch is closed");
+    pending.dispatched = false;
+    entry.outcome = "acknowledged";
+    let envelope: string;
+    try {
+      envelope = JSON.stringify({ ok: true, value });
+    } catch {
+      entry.category = "result_serialization";
+      failed = true;
+      return failure("result_serialization", "Odoo RPC result could not be serialized");
+    }
+    const size = bytes(envelope);
+    resultBytes += size;
+    if (size > CODE_RPC_LIMITS.resultBytes || resultBytes > CODE_RPC_LIMITS.totalResultBytes) {
+      entry.category = "result_limit";
+      close("result_limit");
+      return failure("result_limit", "Code Mode RPC results exceed the size limit");
+    }
+    return envelope;
+  }
+  function settleFailure(pending: Pending, error: unknown): string {
+    const { entry } = pending;
+    failed = true;
+    if (closed)
+      return failure(
+        entry.category ?? "gate_closed",
+        uncertain
+          ? "Odoo write outcome is unknown; do not retry automatically"
+          : "Code Mode RPC dispatch is closed",
+      );
+    pending.dispatched = false;
+    if (error instanceof OdooSafetyError) {
+      entry.outcome = "not_dispatched";
+      entry.category = "write_not_approved";
+      return failure("write_not_approved", "Odoo operation was not approved");
+    }
+    return definiteRejection(error) ? reject(entry, error) : settleUnknown(pending);
+  }
+  function reject(entry: CodeLedgerEntry, error: unknown): string {
+    entry.outcome = "rejected";
+    entry.category = errorCategory(error);
+    return failure(
+      entry.category,
+      entry.category === "access_denied" ? "Odoo access denied" : "Odoo rejected the request",
+    );
+  }
+  /** A transport failure after dispatch leaves the RPC outcome unknown. */
+  function settleUnknown(pending: Pending): string {
+    const { entry } = pending;
+    entry.outcome = "unknown";
+    entry.category = pending.mutating ? "unknown_write" : "connection_failed";
+    if (pending.mutating) {
+      uncertain = true;
+      close("unknown_write");
+    }
+    return failure(
+      entry.category,
+      pending.mutating
+        ? "Odoo write outcome is unknown; do not retry automatically"
+        : "Odoo connection failed",
+    );
+  }
+  /** Hand the dispatch slot to the next queued attempt, in FIFO order. */
+  function release(pending: Pending): void {
+    if (active !== pending) return;
+    active = undefined;
+    if (closed) return;
+    const next = queued.shift();
+    if (!next) return;
+    // Reserve the slot before waking the continuation so fresh callers cannot jump FIFO.
+    active = next.pending;
+    next.resolve(true);
+  }
+
   return {
     signal,
     close,
     snapshot: () => entries.map((entry) => ({ ...entry, effects: [...entry.effects] })),
     status: () => (uncertain ? "uncertain" : failed ? "failed" : "success"),
     async dispatch(encoded) {
-      if (entries.length >= CODE_RPC_LIMITS.attempts) {
-        close("rpc_limit");
-        return failure("rpc_limit", "Code Mode RPC attempt limit exceeded");
-      }
-      const entry: CodeLedgerEntry = {
-        id: entries.length + 1,
-        model: "",
-        method: "",
-        effects: [],
-        outcome: "not_dispatched",
-      };
-      entries.push(entry);
-      const refuse = (category: string, message: string, policyRefusal = false) => {
-        failed = true;
-        entry.outcome = policyRefusal ? "policy_refused" : "not_dispatched";
-        entry.category = category;
-        return failure(category, message);
-      };
-      if (closed || signal.aborted)
-        return refuse("gate_closed", "Code Mode RPC dispatch is closed");
-      argumentBytes += typeof encoded === "string" ? bytes(encoded) : 0;
-      if (
-        typeof encoded !== "string" ||
-        encoded.length > CODE_RPC_LIMITS.argumentBytes ||
-        bytes(encoded) > CODE_RPC_LIMITS.argumentBytes ||
-        argumentBytes > CODE_RPC_LIMITS.totalArgumentBytes
-      ) {
-        close("argument_limit");
-        return refuse("argument_limit", "Code Mode RPC arguments exceed the size limit");
-      }
-      let request: z.infer<typeof requestSchema>;
-      try {
-        if (!codeJsonDepth(encoded)) throw new Error("Invalid JSON depth");
-        request = requestSchema.parse(JSON.parse(encoded));
-        if (
-          Object.hasOwn(request.kwargs, "context") &&
-          (request.kwargs.context === null ||
-            typeof request.kwargs.context !== "object" ||
-            Array.isArray(request.kwargs.context))
-        )
-          throw new Error("Invalid context");
-      } catch {
-        return refuse("invalid_rpc", "Invalid Code Mode model RPC request");
-      }
-      entry.model = request.model;
-      entry.method = request.method;
-      entry.effects = resolveRpcEffects(
-        request.model,
-        request.method,
-        target ? { effective: target.effective, addons: target.addons } : {},
-      );
-      const matching = target?.grants.find(
-        (candidate) =>
-          candidate.model === request.model &&
-          candidate.method === request.method &&
-          contains(candidate.effects, entry.effects) &&
-          (used.get(candidate) ?? 0) < (candidate.maxCalls ?? CODE_RPC_LIMITS.attempts) &&
-          (candidate.args === undefined || sameJson(candidate.args, request.args)) &&
-          (candidate.kwargs === undefined || sameJson(candidate.kwargs, request.kwargs)),
-      );
-      if (!requestedValid || !contains(callerEffects, entry.effects) || !matching)
-        return refuse(
-          "policy_denied",
-          "Host policy does not authorize this Odoo RPC and its effects",
-          true,
-        );
-      const pending = { entry, dispatched: false, mutating: effectful(entry.effects) };
-      // Reserve this exact grant when admitting the attempt, including queued work.
-      // Guest Promise.all is supported, while actual transport dispatch stays serial.
-      used.set(matching, (used.get(matching) ?? 0) + 1);
+      const admission = admit(encoded);
+      if (typeof admission === "string") return admission;
+      const { request, pending } = admission;
       if (active) {
         const admitted = await new Promise<boolean>((resolve) => queued.push({ pending, resolve }));
         // close() finalized queued entries synchronously. Do not mutate them after handback.
@@ -320,75 +445,12 @@ export function createCodeGate(
           operation.client.call(request.model, request.method, request.args, request.kwargs),
           cancelled,
         ]);
-        if (closed)
-          return failure(entry.category ?? "gate_closed", "Code Mode RPC dispatch is closed");
-        // Odoo has acknowledged the RPC. Delivery/serialization failures cannot undo that fact.
-        pending.dispatched = false;
-        entry.outcome = "acknowledged";
-        let envelope: string;
-        try {
-          envelope = JSON.stringify({ ok: true, value });
-        } catch {
-          entry.category = "result_serialization";
-          failed = true;
-          return failure("result_serialization", "Odoo RPC result could not be serialized");
-        }
-        const size = bytes(envelope);
-        resultBytes += size;
-        if (size > CODE_RPC_LIMITS.resultBytes || resultBytes > CODE_RPC_LIMITS.totalResultBytes) {
-          entry.category = "result_limit";
-          close("result_limit");
-          return failure("result_limit", "Code Mode RPC results exceed the size limit");
-        }
-        return envelope;
+        return acknowledge(pending, value);
       } catch (error) {
-        failed = true;
-        if (closed)
-          return failure(
-            entry.category ?? "gate_closed",
-            uncertain
-              ? "Odoo write outcome is unknown; do not retry automatically"
-              : "Code Mode RPC dispatch is closed",
-          );
-        pending.dispatched = false;
-        if (error instanceof OdooSafetyError) {
-          entry.outcome = "not_dispatched";
-          entry.category = "write_not_approved";
-          return failure("write_not_approved", "Odoo operation was not approved");
-        }
-        if (definiteRejection(error)) {
-          entry.outcome = "rejected";
-          entry.category = errorCategory(error);
-          return failure(
-            entry.category,
-            entry.category === "access_denied" ? "Odoo access denied" : "Odoo rejected the request",
-          );
-        }
-        entry.outcome = "unknown";
-        entry.category = pending.mutating ? "unknown_write" : "connection_failed";
-        if (pending.mutating) {
-          uncertain = true;
-          close("unknown_write");
-        }
-        return failure(
-          entry.category,
-          pending.mutating
-            ? "Odoo write outcome is unknown; do not retry automatically"
-            : "Odoo connection failed",
-        );
+        return settleFailure(pending, error);
       } finally {
         if (abortListener) signal.removeEventListener("abort", abortListener);
-        if (active === pending) {
-          active = undefined;
-          if (!closed) {
-            const next = queued.shift();
-            if (next) {
-              // Reserve the slot before waking the continuation so fresh callers cannot jump FIFO.
-              active = next.pending;
-              next.resolve(true);
-            }
-          }
-        }
+        release(pending);
       }
     },
   };

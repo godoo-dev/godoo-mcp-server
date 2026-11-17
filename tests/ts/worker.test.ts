@@ -94,6 +94,33 @@ describe("built native Cloudflare Worker", () => {
   const writeStarted = deferred();
   const writeClosed = deferred();
 
+  async function s3Endpoint(request: import("miniflare").Request) {
+    if (request.method === "HEAD")
+      return new MiniflareResponse(null, {
+        status: 200,
+        headers: { "last-modified": new Date().toUTCString() },
+      });
+    expect(request.method).toBe("PUT");
+    s3Uploads.push({
+      url: request.url,
+      content: await request.text(),
+      authorization: request.headers.get("authorization"),
+    });
+    return new MiniflareResponse(null, { status: 200 });
+  }
+
+  async function forwardOutbound(request: import("miniflare").Request) {
+    const response = await fetch(request.url, {
+      method: request.method,
+      headers: Object.fromEntries(request.headers),
+      body: request.body ? await request.arrayBuffer() : undefined,
+    });
+    return new MiniflareResponse(await response.arrayBuffer(), {
+      status: response.status,
+      headers: Object.fromEntries(response.headers),
+    });
+  }
+
   beforeAll(async () => {
     upstream = createServer((request, response) => {
       const chunks: Buffer[] = [];
@@ -227,29 +254,9 @@ describe("built native Cloudflare Worker", () => {
                   outboundService: {
                     type: "fetcher" as const,
                     async handler(request: import("miniflare").Request) {
-                      if (new URL(request.url).hostname === "s3-test.invalid") {
-                        if (request.method === "HEAD")
-                          return new MiniflareResponse(null, {
-                            status: 200,
-                            headers: { "last-modified": new Date().toUTCString() },
-                          });
-                        expect(request.method).toBe("PUT");
-                        s3Uploads.push({
-                          url: request.url,
-                          content: await request.text(),
-                          authorization: request.headers.get("authorization"),
-                        });
-                        return new MiniflareResponse(null, { status: 200 });
-                      }
-                      const response = await fetch(request.url, {
-                        method: request.method,
-                        headers: Object.fromEntries(request.headers),
-                        body: request.body ? await request.arrayBuffer() : undefined,
-                      });
-                      return new MiniflareResponse(await response.arrayBuffer(), {
-                        status: response.status,
-                        headers: Object.fromEntries(response.headers),
-                      });
+                      if (new URL(request.url).hostname === "s3-test.invalid")
+                        return await s3Endpoint(request);
+                      return await forwardOutbound(request);
                     },
                   },
                 },

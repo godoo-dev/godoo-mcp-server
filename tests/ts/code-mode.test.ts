@@ -311,3 +311,153 @@ describe("native SDK sandbox", () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("code_execute envelope", () => {
+  const executed = (value: Partial<Record<string, unknown>>) => ({
+    ok: true,
+    logs: ["l"],
+    elapsed_ms: 3,
+    wasm_bytes: 0,
+    ...value,
+  });
+
+  it("reports an unavailable runtime with a closed gate", async () => {
+    const { operation, run } = fixture();
+    operation.runtime.executeCode = undefined;
+    expect(await run("return 1;")).toEqual({
+      status: "failed",
+      error: "code_runtime_unavailable",
+      ledger: [],
+      logs: [],
+    });
+  });
+
+  it("maps executor outcomes onto envelope status, error and result", async () => {
+    const { operation, run } = fixture();
+    const stub = vi.fn();
+    operation.runtime.executeCode = stub;
+    stub.mockResolvedValueOnce(executed({ result: undefined }));
+    expect(await run("x")).toEqual({
+      status: "success",
+      ledger: [],
+      logs: ["l"],
+      elapsed_ms: 3,
+      result: null,
+    });
+    stub.mockResolvedValueOnce(executed({ ok: false, error: "guest_error", result: 5 }));
+    expect(await run("x")).toEqual({
+      status: "failed",
+      error: "guest_error",
+      ledger: [],
+      logs: ["l"],
+      elapsed_ms: 3,
+    });
+    stub.mockResolvedValueOnce(executed({ result: 1n }));
+    expect(await run("x")).toEqual({
+      status: "failed",
+      error: "result_serialization_failed",
+      ledger: [],
+      logs: ["l"],
+      elapsed_ms: 3,
+    });
+    stub.mockResolvedValueOnce(executed({ result: "abc" }));
+    expect(await run("x", { max_return_bytes: 5 })).toMatchObject({
+      status: "success",
+      result: "abc",
+    });
+    expect(stub).toHaveBeenCalledWith("x", 7, expect.anything());
+  });
+
+  it("keeps uncertain gate status over executor failure and delivery failure", async () => {
+    const { operation, run } = fixture(() => new Promise(() => undefined), ["read", "mutate"]);
+    const real = executeCode;
+    operation.runtime.executeCode = async (code, uid, port) => {
+      const result = await real(code, uid, port);
+      return { ...result, ok: code.includes("ok"), result: 1n };
+    };
+    const code = "client.write('res.partner',[1],{name:'x'}).catch(()=>{}); return 'ok';";
+    expect(await run(code)).toMatchObject({
+      status: "uncertain",
+      error: "result_serialization_failed",
+    });
+    expect(await run(code.replace("ok", "no"))).toMatchObject({ status: "uncertain" });
+  });
+});
+
+describe("code engine limits", () => {
+  it.each([
+    ["a thrown guest error", "throw new Error('x');", "guest_error"],
+    [
+      "a guest-reported failure",
+      "globalThis.__codeOutcome='{\"ok\":false}'; await new Promise(()=>{});",
+      "guest_error",
+    ],
+    [
+      "a non-string outcome",
+      "globalThis.__codeOutcome=1; await new Promise(()=>{});",
+      "guest_error",
+    ],
+    [
+      "too many rpc attempts",
+      "for(let i=0;i<65;i++) client.searchCount('res.partner').catch(()=>{}); await new Promise(()=>{});",
+      "rpc_limit",
+    ],
+    [
+      "an oversized rpc argument",
+      "await client.call('res.partner','read',['x'.repeat(262145)]).catch(()=>{}); await new Promise(()=>{});",
+      "argument_limit",
+    ],
+    ["too many final JSON nodes", "return new Array(50001).fill(0);", "final_structure_limit"],
+    ["a syntax error", "return )(;", "guest_error"],
+  ])("fails on %s", async (_name, code, error) => {
+    const { operation } = fixture();
+    const port = createCodeGate(operation, ["read"]);
+    const result = await executeCode(code, 7, port);
+    expect(result).toMatchObject({ ok: false, error });
+  });
+
+  it("accepts brackets, quotes and escapes inside final JSON strings", async () => {
+    const { run } = fixture();
+    const text = `${"[".repeat(100)}\\"{${"{".repeat(100)}`;
+    expect(
+      await run(`return [${JSON.stringify(text)}, new Array(40000).fill(0).length];`),
+    ).toMatchObject({
+      status: "success",
+      result: [text, 40000],
+    });
+  });
+
+  it("keeps successful logs and refuses pre-cancelled work", async () => {
+    const { run } = fixture();
+    expect(await run("console.log('a', 1); console.warn('b'); return null;")).toMatchObject({
+      status: "success",
+      logs: ["a 1", "b"],
+      result: null,
+    });
+    const controller = new AbortController();
+    controller.abort();
+    const closed: string[] = [];
+    const result = await executeCode("return 1;", 7, {
+      signal: controller.signal,
+      dispatch: async () => "",
+      close: (reason) => closed.push(reason),
+    });
+    expect(result).toMatchObject({ ok: false, error: "sandbox_failed", logs: [], wasm_bytes: 0 });
+    expect(closed).toEqual(["execution_finished"]);
+  });
+
+  it("cancels running guest code and keeps the first terminal reason", async () => {
+    const controller = new AbortController();
+    const closed: string[] = [];
+    const running = executeCode("await new Promise(()=>{});", 7, {
+      signal: controller.signal,
+      dispatch: async () => "",
+      close: (reason) => closed.push(reason),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    controller.abort();
+    expect(await running).toMatchObject({ ok: false, error: "cancelled" });
+    // Abort stops first; the run loop then closes with deadline; cleanup repeats the terminal reason.
+    expect(closed).toEqual(["cancelled", "deadline", "cancelled"]);
+  });
+});

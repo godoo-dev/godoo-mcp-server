@@ -656,3 +656,255 @@ describe("friendly property contracts through the published client scope", () =>
     ).rejects.toThrow("Unknown property name");
   });
 });
+
+describe("friendly property characterization", () => {
+  let memory: ReturnType<typeof fixture>;
+  beforeEach(() => {
+    memory = fixture();
+  });
+  const discoverParent = (definitions: PropertyObject[]) => {
+    memory.definitions.set(7, definitions);
+    return discover(memory.client, model, undefined, field, 7);
+  };
+
+  it.each([
+    ["missing name", [{ string: "A", type: "char" }]],
+    ["non-string label", [definition("a", 5 as unknown as string, "char")]],
+    ["empty type", [definition("a", "A", "")]],
+    ["duplicate id", [definition("a", "A", "char"), definition("a", "B", "char")]],
+    ["non-array selection", [definition("a", "A", "selection", { selection: "x" })]],
+    ["long selection item", [definition("a", "A", "selection", { selection: [["x", "X", 1]] })]],
+    ["short tag item", [definition("a", "A", "tags", { tags: [["x", "X"]] })]],
+    ["non-array option", [definition("a", "A", "selection", { selection: ["x"] })]],
+    ["empty option id", [definition("a", "A", "selection", { selection: [["", "X"]] })]],
+    ["non-string option label", [definition("a", "A", "selection", { selection: [["x", 1]] })]],
+    [
+      "duplicate option id",
+      [
+        definition("a", "A", "selection", {
+          selection: [
+            ["x", "X"],
+            ["x", "Y"],
+          ],
+        }),
+      ],
+    ],
+    ["non-integer tag color", [definition("a", "A", "tags", { tags: [["x", "X", "red"]] })]],
+    ["non-string comodel", [definition("a", "A", "char", { comodel: 5 })]],
+    ["many2one without comodel", [definition("a", "A", "many2one")]],
+    ["many2many without comodel", [definition("a", "A", "many2many", { comodel: "" })]],
+  ])("rejects malformed definitions: %s", async (_label, definitions) => {
+    await expect(discoverParent(definitions as PropertyObject[])).rejects.toThrow(
+      "all current values",
+    );
+  });
+
+  it("rejects empty option aliases", async () => {
+    await expect(
+      discoverParent([definition("a", "A", "selection", { selection: [["x", "---"]] })]),
+    ).rejects.toThrow("Option labels produce empty or duplicate");
+  });
+
+  it("describes missing options, falsy comodels and relation kinds", async () => {
+    expect(
+      await discoverParent([
+        definition("a", "Plain", "selection"),
+        definition("b", "Text", "char", { comodel: "" }),
+        definition("c", "Many", "many2many", { comodel: "res.partner" }),
+        definition("d", "Skip", "separator"),
+        definition("e", "Unknown", "json"),
+      ]),
+    ).toEqual({
+      [field]: [
+        { name: "plain", label: "Plain", type: "selection", values: [] },
+        { name: "text", label: "Text", type: "char" },
+        { name: "many", label: "Many", type: "many2many", comodel: "res.partner" },
+        { name: "unknown", label: "Unknown", type: "json" },
+      ],
+    });
+  });
+
+  const readContainer = (values: unknown) => {
+    (memory.rows.get(43) as PropertyObject)[field] = values;
+    return readProperties(memory.client, model, [43], [`properties.${field}`]);
+  };
+  const scoped = (definitions: PropertyObject[]) => {
+    memory.definitions.set(8, definitions);
+    return definitions;
+  };
+
+  it.each([false, null, []])("treats empty container %s as no values", async (empty) => {
+    scoped([definition("s", "Split", "separator")]);
+    expect(await readContainer(empty)).toEqual([{ id: 43, properties: { [field]: {} } }]);
+  });
+
+  it("ignores known separator values and decodes falsy values by kind", async () => {
+    scoped([
+      definition("s", "Split", "separator"),
+      definition("c", "Text", "char"),
+      definition("t", "Tags", "tags", { tags: [["x", "X", 1]] }),
+      definition("m", "Many", "many2many", { comodel: "res.partner" }),
+      definition("o", "One", "many2one", { comodel: "res.partner" }),
+      definition("p", "Pick", "selection", { selection: [["x", "X"]] }),
+    ]);
+    expect(
+      await readContainer([
+        { name: "s", type: "separator" },
+        { name: "c", type: "char", value: false },
+        { name: "t", type: "tags", value: null },
+        { name: "m", type: "many2many", comodel: "res.partner", value: false },
+        { name: "o", type: "many2one", comodel: "res.partner", value: null },
+        { name: "p", type: "selection", value: false },
+      ]),
+    ).toEqual([
+      {
+        id: 43,
+        properties: { [field]: { text: null, tags: [], many: [], one: null, pick: null } },
+      },
+    ]);
+  });
+
+  it("decodes relation display tuples with null or false names", async () => {
+    scoped([
+      definition("o", "One", "many2one", { comodel: "res.partner" }),
+      definition("q", "Two", "many2one", { comodel: "res.partner" }),
+      definition("m", "Many", "many2many", { comodel: "res.partner" }),
+      definition("t", "Tags", "tags", {
+        tags: [
+          ["x", "X", 1],
+          ["y", "Y", 2],
+        ],
+      }),
+    ]);
+    expect(
+      await readContainer([
+        { name: "o", type: "many2one", comodel: "res.partner", value: [11, false] },
+        { name: "q", type: "many2one", comodel: "res.partner", value: [12, null] },
+        { name: "m", type: "many2many", comodel: "res.partner", value: [[13, false], 14] },
+        { name: "t", type: "tags", value: ["y", "x"] },
+      ]),
+    ).toEqual([
+      { id: 43, properties: { [field]: { one: 11, two: 12, many: [13, 14], tags: ["y", "x"] } } },
+    ]);
+  });
+
+  it.each([
+    ["non-array container", "x"],
+    ["non-object item", [1]],
+    ["unnamed item", [{ type: "char", value: "" }]],
+    [
+      "unknown separator",
+      [
+        { name: "other", type: "separator" },
+        { name: "c", type: "char", value: "" },
+      ],
+    ],
+    ["missing value", [{ name: "c", type: "char" }]],
+    ["comodel mismatch", [{ name: "c", type: "char", comodel: "res.partner", value: "" }]],
+    ["wrong scalar", [{ name: "c", type: "char", value: 1 }]],
+  ])("rejects malformed current values: %s", async (_label, values) => {
+    scoped([definition("c", "Text", "char")]);
+    await expect(readContainer(values)).rejects.toThrow("all current values");
+  });
+
+  it.each([
+    ["tags not array", "x"],
+    ["tags unknown", ["z"]],
+    ["tags non-string", [1]],
+  ])("rejects malformed current tags: %s", async (_label, value) => {
+    scoped([definition("t", "Tags", "tags", { tags: [["x", "X", 1]] })]);
+    await expect(readContainer([{ name: "t", type: "tags", value }])).rejects.toThrow(
+      "all current values",
+    );
+  });
+
+  it.each([
+    ["many2one", [11]],
+    ["many2one", [11, 5]],
+    ["many2one", 0],
+    ["many2many", 11],
+    ["many2many", [[11, "A", 1]]],
+    ["many2many", [0]],
+  ])("rejects malformed current %s value %j", async (kind, value) => {
+    scoped([definition("r", "Rel", kind, { comodel: "res.partner" })]);
+    await expect(
+      readContainer([{ name: "r", type: kind, comodel: "res.partner", value }]),
+    ).rejects.toThrow("all current values");
+  });
+
+  it("rejects current values of unsupported kinds", async () => {
+    scoped([definition("j", "Json", "json")]);
+    await expect(readContainer([{ name: "j", type: "json", value: {} }])).rejects.toThrow(
+      "all current values",
+    );
+    scoped([definition("j", "Json", "json")]);
+    await expect(
+      prepareCreate(memory.client, model, { [field]: { json: 1 } }, { project_id: 8 }),
+    ).rejects.toThrow("all current values");
+  });
+
+  it("encodes relation, integer, char and selection writes", async () => {
+    scoped([
+      definition("m", "Many", "many2many", { comodel: "res.partner" }),
+      definition("o", "One", "many2one", { comodel: "res.partner" }),
+      definition("i", "Count", "integer"),
+      definition("c", "Text", "char"),
+      definition("t", "Tags", "tags", { tags: [["x", "X", 1]] }),
+      definition("p", "Pick", "selection", { selection: [["y", "Y"]] }),
+      definition("b", "Flag", "boolean"),
+      definition("d", "When", "datetime"),
+    ]);
+    expect(
+      await prepareCreate(
+        memory.client,
+        model,
+        {
+          [field]: {
+            many: [11, 12],
+            one: 13,
+            count: -4,
+            text: "hi",
+            tags: ["x"],
+            pick: "y",
+            flag: true,
+            when: "2026-10-30 12:00",
+          },
+        },
+        { project_id: 8 },
+      ),
+    ).toEqual({
+      project_id: 8,
+      [field]: {
+        m: [11, 12],
+        o: 13,
+        i: -4,
+        c: "hi",
+        t: ["x"],
+        p: "y",
+        b: true,
+        d: "2026-10-30 12:00",
+      },
+    });
+    for (const patch of [{ many: null }, { one: null }, { tags: [] }]) {
+      expect(
+        (await prepareCreate(memory.client, model, { [field]: patch }, { project_id: 8 }))[field],
+      ).toEqual("many" in patch ? { m: [] } : "one" in patch ? { o: false } : { t: [] });
+    }
+    for (const patch of [
+      { many: 11 },
+      { many: [11, "x"] },
+      { text: 1 },
+      { flag: "true" },
+      { when: 1 },
+      { when: "2026-10-30T25:00" },
+      { tags: "x" },
+      { tags: [1] },
+      { pick: ["y"] },
+      { many: false },
+    ]) {
+      await expect(
+        prepareCreate(memory.client, model, { [field]: patch }, { project_id: 8 }),
+      ).rejects.toThrow();
+    }
+  });
+});

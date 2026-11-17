@@ -5,9 +5,14 @@ description: Check a godoo-mcp-server change with its check command and drive it
 
 # Verify godoo-mcp-server
 
-Tools: Node 24.22.2, pnpm 11.1.3 via corepack, `just`, Python 3.14.7 and uv
-0.12.5 for the acceptance client, and Docker for the image and Odoo tiers. No
-model login or real Odoo credentials are needed.
+Machine prerequisites: Node 24 with corepack, uv, and Docker for the image and
+Odoo tiers. Everything else is a project dependency: pnpm 11.1.3 comes from
+`packageManager` through corepack, `just` from the `rust-just` devDependency,
+Ruff from the `tests/acceptance` dev group. In a fresh checkout run
+`corepack pnpm install --frozen-lockfile` once, then `corepack pnpm exec just ...`
+(or put `node_modules/.bin` on PATH). The justfile adds `node_modules/.bin` and a
+local corepack pnpm shim to PATH for its recipes. No model login or real Odoo
+credentials are needed.
 
 ## Check command
 
@@ -33,11 +38,14 @@ just r2                                # artifact, storage and native Worker tes
 just offline "$dir/offline"            # lint, build, all unit tests and the real-HTTP probe
 ```
 
-Complexity: Biome has no blocking complexity rule yet. Enabling
-`noExcessiveCognitiveComplexity` at its default limit flags existing functions;
-that work waits for an owner decision in
-[#56](https://github.com/godoo-dev/godoo-mcp-server/issues/56), so do not add
-the rule or suppressions in an unrelated change.
+`just lint` also runs Ruff format and lint on `tests/acceptance`.
+
+Complexity blocks in `just lint`: Biome `noExcessiveCognitiveComplexity` at its
+default limit 15 for TypeScript and build scripts, Ruff `C901` at 10 for the
+acceptance suite. Refactor a new violation without changing behaviour, adding
+characterization tests where coverage is missing. What cannot be fixed safely
+goes to the owner; an approved exception is the narrowest suppression with its
+reason and "owner-approved".
 
 ## Choose the tier
 
@@ -80,6 +88,15 @@ directory.
 `MCP_SERVER_COMMAND` selects an installed CLI and `MCP_CANDIDATE_IMAGE` an
 existing image for the acceptance suite; the fixture never rebuilds or deletes a
 caller's image.
+
+## Semantic navigation
+
+`just setup-nav` installs dependencies, enables the project's Claude Code
+TypeScript LSP plugin (`.claude/settings.json`) and checks Serena for Codex
+(`.codex/config.toml`, pinned `serena-agent==2.1.0`; Codex loads it only for a
+trusted checkout). The plugin runs `typescript-language-server` from PATH, so
+start Claude Code with `corepack pnpm exec claude` to use the project's copy.
+Use navigation for definitions and references; `rg` for strings and config.
 
 ## Cleanup
 
