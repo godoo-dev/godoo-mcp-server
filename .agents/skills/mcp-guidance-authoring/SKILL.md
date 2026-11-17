@@ -96,8 +96,8 @@ an independent outcome read before any retry.
 Commands and isolation are in [mcp-verification](../mcp-verification/SKILL.md).
 Choose by the claim that changed:
 
-- **Structure and delivery:** run the skill-creator validator on
-  `src/godoo_mcp_server/skills`, check changed links and topic paths, and run
+- **Structure and delivery:** run the skill-creator validator
+  (`uv run --script <skill-creator>/scripts/validate.py src/godoo_mcp_server/skills --host both`), check changed links and topic paths, and run
   `just test tests/ts/server.test.ts tests/ts/worker.test.ts` after `just build`.
   A new or moved topic also needs the HTTP probe (`just offline`), which
   retrieves every topic through the resource and tool paths. These prove

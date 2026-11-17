@@ -51,11 +51,11 @@ archive directory:
 
 # The full check: every CI stage in order, writing into one external directory.
 check directory source_ref="local":
-    just offline {{ quote(absolute_path(directory) / "offline") }}
-    just package {{ quote(absolute_path(directory) / "candidate") }} {{ quote(source_ref) }} {{ quote(absolute_path(directory) / "offline") }}
-    just image {{ quote(absolute_path(directory) / "candidate") }}
-    for major in {{ odoo_majors }}; do just odoo {{ quote(absolute_path(directory) / "candidate") }} "$major"; done
-    just archive {{ quote(absolute_path(directory) / "candidate") }}
+    {{ just_executable() }} offline {{ quote(absolute_path(directory) / "offline") }}
+    {{ just_executable() }} package {{ quote(absolute_path(directory) / "candidate") }} {{ quote(source_ref) }} {{ quote(absolute_path(directory) / "offline") }}
+    {{ just_executable() }} image {{ quote(absolute_path(directory) / "candidate") }}
+    for major in {{ odoo_majors }}; do {{ just_executable() }} odoo {{ quote(absolute_path(directory) / "candidate") }} "$major"; done
+    {{ just_executable() }} archive {{ quote(absolute_path(directory) / "candidate") }}
 
 r2: sync
     pnpm exec vitest run tests/ts/artifacts.test.ts tests/ts/storage.test.ts tests/ts/worker.test.ts

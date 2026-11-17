@@ -64,9 +64,14 @@ change between versions, mark the Atlas fact it depends on:
 
 - TSDoc: `@see atlas:base/create-record-basic`
 - Code comment: `// atlas: base/create-record-basic`
-- Markdown, including served topics and docs: `<!-- atlas: base/create-record-basic -->`
-- `tool-contracts.json` descriptions have no comment syntax; mark the TSDoc or
-  code that implements the behaviour instead.
+- Python docstring (`tests/acceptance/`): `See atlas:base/create-record-basic.`
+- Markdown, including served topics, `docs/api.md` and other docs:
+  `<!-- atlas: base/create-record-basic -->`
+- `tool-contracts.json` descriptions have no comment syntax; the marker on the
+  TSDoc or code that implements the behaviour stands in for the description.
+
+Markers in served topics are delivered to consumers as HTML comments; that is
+intended and harmless to rendering.
 
 Rules:
 
@@ -137,5 +142,5 @@ A correction needs edit scope.
 
 For prose: check changed relative links and anchors, examples against the
 declared interface, and `git diff --check`. For skills: run the skill-creator
-validator. Served topics and tool descriptions also need the checks in
+validator, `uv run --script <skill-creator>/scripts/validate.py <skill-dir> --host both`. Served topics and tool descriptions also need the checks in
 mcp-guidance-authoring and [mcp-verification](../mcp-verification/SKILL.md).

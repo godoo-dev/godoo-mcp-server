@@ -12,12 +12,13 @@ model login or real Odoo credentials are needed.
 ## Check command
 
 ```sh
-just check "$dir"            # full check; $dir is an empty directory outside the checkout
+just check "$dir"            # full check; $dir is a new, empty directory outside the checkout
 ```
 
 It runs every CI stage in order and stops at the first failure: `offline`,
 `package`, `image`, `odoo` for each major in the justfile's `odoo_majors`, and
-`archive`. Its output is the result. CI runs the same command on GitHub-hosted
+`archive`. Use a fresh directory per run: `package` refuses a directory that
+already holds a candidate. Its output is the result. CI runs the same command on GitHub-hosted
 `ubuntu-latest` for every PR to main, pushes to main and the publish workflow;
 the stable `required` job fails unless `validation` succeeds. Rely on CI on the
 PR for the full run; run `just check` yourself only when no CI run will cover it.
@@ -41,11 +42,11 @@ suppressions in an unrelated change.
 
 | Change touches | Run |
 | --- | --- |
-| Docs or maintainer skills only | Link check, `git diff --check`, skill-creator validator |
-| TypeScript source, tool contracts, served guidance | `just offline` locally; CI for the rest |
-| Packaging, `package.json` files, CLI | `just package` after `just offline` |
-| Dockerfile, image or runtime adapters | `just image`, then `just odoo` |
-| Odoo calls, permissions, writes, guidance with Odoo effects | `just odoo "$dir/candidate" 18` (and 19) |
+| Docs or maintainer skills only | Link check, `git diff --check`, `uv run --script <skill-creator>/scripts/validate.py <skill-dir> --host both` |
+| TypeScript source, tool contracts, served guidance | `just offline "$dir/offline"`; CI for the rest |
+| Packaging, `package.json` files, CLI | then `just package "$dir/candidate" local "$dir/offline"` |
+| Dockerfile, image or runtime adapters | then `just image "$dir/candidate"` and `just odoo "$dir/candidate" 18` |
+| Odoo calls, permissions, writes, guidance with Odoo effects | the stages above, then `just odoo "$dir/candidate" 18` and `19` |
 
 The image and Odoo tiers start Docker containers; run them when the change
 touches what they cover or the owner asks, otherwise leave them to CI. `odoo`
