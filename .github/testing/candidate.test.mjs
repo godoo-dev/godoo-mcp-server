@@ -700,6 +700,7 @@ test("registry preflight validates identity and reconciles npm states", async (t
     { status: 200, body: {} },
     { status: 200, body: { versions: null } },
     { status: 200, body: { versions: [] } },
+    { status: 200, body: { versions: { "0.3.0": null } } },
     { status: 404, body: null },
     { status: 500, body: {} },
   ]) {
