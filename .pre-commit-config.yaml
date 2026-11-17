@@ -5,4 +5,4 @@ repos:
         name: Biome
         entry: pnpm exec biome check
         language: system
-        files: '^(src/ts/|tests/ts/|scripts/).*\.(ts|json|mjs)$'
+        files: '^(src/ts/|tests/ts/|\.github/(build|testing)/).*\.(ts|json|mjs)$'

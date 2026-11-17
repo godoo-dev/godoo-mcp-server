@@ -136,7 +136,11 @@ limits and download examples.
 - [Bundled Odoo guidance](src/godoo_mcp_server/skills/SKILL.md): consumer workflows,
   also available through `guidance_get()` and `skill://odoo/SKILL.md`.
 - [Guidance provenance](src/godoo_mcp_server/skills/PROVENANCE.md): adapted sources and licensing.
-- [Changelog](CHANGELOG.md), [license](LICENSE) and [agent instructions](AGENTS.md).
+- [Maintainer skills](.agents/skills/): [verification](.agents/skills/mcp-verification/SKILL.md),
+  [consumer guidance authoring](.agents/skills/mcp-guidance-authoring/SKILL.md),
+  [knowledge placement and docs](.agents/skills/mcp-docs/SKILL.md) and
+  [work capture](.agents/skills/mcp-capture/SKILL.md). These are not served to MCP consumers.
+- [Changelog](CHANGELOG.md) and [license](LICENSE).
 
 Tool annotations are hints, not write permission. Guidance cannot override client
 policy; host/database names do not establish an environment's safety. These docs

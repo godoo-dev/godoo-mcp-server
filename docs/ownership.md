@@ -21,18 +21,30 @@ a possible direction, not an implemented integration or a selected task.
   product/developer knowledge. Amend existing coverage before adding a page.
 - [Maintainer skills](../.agents/skills/) own repository procedures. Packaged
   [consumer guidance](../src/godoo_mcp_server/skills/SKILL.md) has separate
-  discovery, manifest, provenance and license obligations.
+  discovery, manifest, provenance and license obligations; keep consumer
+  instructions there and preserve its package paths.
+- Tool descriptions in `src/ts/tool-contracts.json` carry the per-call minimum;
+  multi-step procedures belong in served guidance topics.
+  [mcp-docs](../.agents/skills/mcp-docs/SKILL.md) defines the surfaces and the
+  `atlas:<fact-id>` markers for text that depends on version-sensitive Odoo
+  behaviour.
 - Private research, exact source identities, patches and detailed evidence use
   owner-paths or an explicit task destination outside source. Public records must
   carry enough sanitized meaning to be useful without access to those files.
 
-Use [mcp-capture](../.agents/skills/mcp-capture/SKILL.md) for work and
-[mcp-docs](../.agents/skills/mcp-docs/SKILL.md) for knowledge. The ignored
-checkout-local `.mafe-si.toml` binds `capture`, `docs`, `project tracker` and
-`verification`. Local bindings take precedence over inherited routes. A fresh
-checkout can use these relative skills and public URLs directly; no HQ checkout,
-shared tracker, legacy engine or live organization-profile fetch is required.
-Machine paths and private values never belong in tracked skills.
+Use [mcp-capture](../.agents/skills/mcp-capture/SKILL.md) for work and for
+routing findings this project does not own, and
+[mcp-docs](../.agents/skills/mcp-docs/SKILL.md) for knowledge. Odoo server
+behaviour belongs to Atlas, client-library behaviour to the library projects and
+Stateman semantics to Stateman. The ignored checkout-local `.mafe-si.toml` can
+bind machine-specific destinations. A fresh checkout can use these relative
+skills and public URLs directly; no other checkout, shared tracker or live
+organization-profile fetch is required. Machine paths and private values never
+belong in tracked files.
+
+Before claiming a feature, inspect the selected branch: retained branches can
+differ in protocol or verification harness. Keep source, tests, package
+publication, runtime and client acceptance distinct.
 
 ## Intake and status
 

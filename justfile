@@ -49,19 +49,13 @@ odoo directory major="18":
 archive directory:
     node .github/testing/candidate.mjs archive --directory {{ quote(absolute_path(directory)) }}
 
+# The full check: every CI stage in order, writing into one external directory.
+check directory source_ref="local":
+    just offline {{ quote(absolute_path(directory) / "offline") }}
+    just package {{ quote(absolute_path(directory) / "candidate") }} {{ quote(source_ref) }} {{ quote(absolute_path(directory) / "offline") }}
+    just image {{ quote(absolute_path(directory) / "candidate") }}
+    for major in {{ odoo_majors }}; do just odoo {{ quote(absolute_path(directory) / "candidate") }} "$major"; done
+    just archive {{ quote(absolute_path(directory) / "candidate") }}
+
 r2: sync
     pnpm exec vitest run tests/ts/artifacts.test.ts tests/ts/storage.test.ts tests/ts/worker.test.ts
-
-# Run the same CI workflow locally, retaining its tested-candidate artifact.
-validate evidence *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    options=()
-    if [[ -f .git ]]; then
-      common=$(git rev-parse --path-format=absolute --git-common-dir)
-      options+=(--container-options "--volume $common:$common:ro")
-    fi
-    act workflow_dispatch --workflows .github/workflows/ci.yml --network host --rm \
-      --env-file /dev/null --secret-file /dev/null --input-file /dev/null --var-file /dev/null \
-      --platform ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest@sha256:62d572b92f9f32d3427b6d220ad1f9dca9c7b6ffad37d295425037dbff78abaf \
-      --artifact-server-path {{ quote(absolute_path(evidence)) }} "${options[@]}" {{ args }}

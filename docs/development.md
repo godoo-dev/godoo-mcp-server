@@ -18,54 +18,43 @@ request isolation and the actual built Worker in Miniflare without `nodejs_compa
 the disposable TLS S3 adapter. Live provider permissions and expiry remain rollout
 acceptance. For documentation-only edits, check affected links and `git diff --check`.
 
-## Native candidate checks
+## Full check
 
-Run full local verification with `act` 0.2.95+ and Docker:
-
-```sh
-just validate "$evidence"
-```
-
-This executes the checked-in CI workflow, including setup actions, all acceptance
-stages, the required-result gate and artifact upload. GitHub runs the same workflow
-remotely. The recipe selects a pinned runner image, host networking for loopback
-fixtures and Docker access for Testcontainers. In a Git worktree it mounts the
-common Git metadata read-only so candidate source identity still works. It uses
-empty environment/secret/input files rather than loading local deployment secrets.
-The `tested-candidate` artifact is retained in the supplied external directory.
-Additional `act` flags can follow that directory.
-
-Stage commands live in `justfile`; compiler, test-fixture and artifact-identity
-support lives under `.github/`. The package stage consumes the verified build
-instead of rebuilding it. For a focused diagnosis, invoke individual stages:
-
-Use a new external evidence directory for each candidate. Docker must be available;
-these checks provision only disposable Odoo/Postgres resources:
+The full check needs Docker and an empty directory outside the checkout:
 
 ```sh
-just offline "$evidence/offline"
-just package "$evidence/candidate" local "$evidence/offline"
-just image "$evidence/candidate"
-just odoo "$evidence/candidate" 18
-just odoo "$evidence/candidate" 19
-just archive "$evidence/candidate"
+just check "$dir"
 ```
 
-The package step packs one npm tarball, installs it in a consumer outside source
-and drives real Streamable HTTP.
-The Dockerfile installs that exact tarball into a pinned non-root Node image.
-Each Odoo major runs the full external acceptance suite through source, installed
-package and the same candidate image. The archive gate checks hashes, reports,
-observed majors and owned-resource teardown, then reloads the same image archive.
-Empty/skipped suites, wrong majors and unavailable Docker fail.
+It runs these stages in order and stops at the first failure; each stage can
+also be run on its own while diagnosing:
 
-Candidate manifests retain source/dirty-input identity, version, lock/tool identities,
-bundle/tarball/image hashes and reports. Later source changes invalidate those
-proofs. A local dirty proof applies only to its retained exact inputs; release
-promotion requires the selected clean tagged commit. Use
-[mcp-verification](../.agents/skills/mcp-verification/SKILL.md) for boundary selection,
-focused HTTP diagnosis and cleanup. Keep evidence outside source; never prune the
-shared Docker daemon or delete another invocation's resources.
+```sh
+just offline "$dir/offline"
+just package "$dir/candidate" local "$dir/offline"
+just image "$dir/candidate"
+just odoo "$dir/candidate" 18
+just odoo "$dir/candidate" 19
+just archive "$dir/candidate"
+```
+
+`offline` runs the commands above plus the real-HTTP probe against the built
+server. The package step consumes that build, packs one npm tarball, installs it
+in a consumer outside source and drives real Streamable HTTP. The Dockerfile
+installs that exact tarball into a pinned non-root Node image. Each Odoo major
+runs the full external acceptance suite through source, installed package and
+the same candidate image, provisioning only disposable Odoo and Postgres
+containers. The archive stage checks hashes, reports, observed majors and
+teardown, then reloads the same image archive. Empty or skipped suites, wrong
+majors and unavailable Docker fail.
+
+The candidate manifest records version, lock and tool identities, and bundle,
+tarball and image hashes; later source changes invalidate it, and release
+promotion uses only the candidate built from the selected tagged commit. Stage
+commands live in `justfile`; compiler, fixture and candidate support lives under
+`.github/`. See [mcp-verification](../.agents/skills/mcp-verification/SKILL.md)
+for choosing a tier, focused HTTP diagnosis and cleanup. Never prune the shared
+Docker daemon or delete another run's resources.
 
 ## Guidance workflow acceptance
 
@@ -103,7 +92,7 @@ No model subscription or real Odoo credentials are needed for required CI.
 | `tests/acceptance/` | Independent frozen Python SDK/Testcontainers acceptance |
 | `.github/testing/candidate.mjs` | Candidate identity, proof gates and promotion checks |
 | `.github/build/` | Runtime bundling, guest SDK assets and WASM metering |
-| `justfile`, `.github/workflows/` | Stage commands and local/remote CI orchestration |
+| `justfile`, `.github/workflows/` | Check and stage commands, and CI orchestration |
 
 Adding a guidance file alone does not expose it. Use the
 [authoring procedure](../.agents/skills/mcp-guidance-authoring/SKILL.md) and preserve
@@ -131,10 +120,12 @@ preflight reads and write atomic.
 ## CI and release configuration
 
 The [CI workflow](../.github/workflows/ci.yml) runs on PRs targeting main, pushes
-to main and manual/reusable invocations. One validation job runs every substantive
-gate above; the stable `required` aggregate rejects any non-success result.
-Local `act` executes the same workflow without skipping checks. Local execution
-does not establish hosted permissions, protections or registry acceptance.
+to main and manual/reusable invocations. One `validation` job runs `just check`;
+the stable `required` aggregate rejects any non-success result. A newer push to a
+PR cancels that PR's older run; runs on main, manual runs and publish
+revalidation each get their own concurrency group and are never cancelled by
+another run. Local runs do not establish hosted permissions, protections or
+registry acceptance.
 
 The [manual publish workflow](../.github/workflows/publish.yml) resolves a
 version-matching tag reachable from main and validates that immutable source.
@@ -147,8 +138,11 @@ No merge or passing check grants publication, deployment or business-write autho
 `main` remains the sole long-lived integration/release branch. Feature PRs target
 main. Preserve unique, dirty, active and ambiguous worktrees; release cleanup needs
 separate authority and inspection. Retain work and deferred observations through
-[mcp-capture](../.agents/skills/mcp-capture/SKILL.md); canonical operational knowledge
-uses [mcp-docs](../.agents/skills/mcp-docs/SKILL.md).
+[mcp-capture](../.agents/skills/mcp-capture/SKILL.md); project knowledge and its
+placement use [mcp-docs](../.agents/skills/mcp-docs/SKILL.md).
+
+Local `.mafe-si.toml` (machine-specific agent bindings) and `.scratch/` (agent
+working material) are git-ignored.
 
 ## Code Mode build and verification
 

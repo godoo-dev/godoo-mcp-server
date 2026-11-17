@@ -1,75 +1,141 @@
 ---
 name: mcp-docs
-description: Retrieve, author and maintain canonical operational MCP documentation, including proposed guidance before implementation and reconciliation after verification; routes served guidance to its distinct authoring procedure.
+description: Retrieve, author and maintain godoo-mcp-server knowledge, decide which surface a claim belongs on (code, TSDoc, docs, tool descriptions, served topics, maintainer skills) and apply Atlas fact markers. Served guidance content uses mcp-guidance-authoring; work records use mcp-capture.
 ---
 
-# Maintain operational MCP knowledge
+# Maintain godoo-mcp-server knowledge
 
-Use the explicitly selected checkout's `AGENTS.md`, `README.md`, `docs/api.md`
-and `docs/development.md`. These are canonical project content; no HQ checkout or
-online organization-profile fetch is needed. See [ownership](../../../docs/ownership.md)
-for product boundaries. Ignored checkout-local `.mafe-si.toml` can bind machine
-paths/categories; keep them out of tracked text. Relative project routes remain
-usable without local private configuration.
+Work in the selected checkout. Everything here is public: never add private
+paths, hosts, identities, company policy or text copied from private knowledge
+bases. Machine-specific bindings stay in the ignored local `.mafe-si.toml`.
+
+## What this project owns
+
+Each claim has one canonical home. This repository owns:
+
+- the MCP protocol surface: tools, arguments, results, errors, resources,
+  limits and telemetry of this server;
+- what an agent should do with these tools: workflow guidance served to MCP
+  consumers;
+- this server's runtime, packaging, verification and release mechanics;
+- maintainer procedures for this repository.
+
+It does not own Odoo server behaviour, Godoo client-library behaviour or
+Stateman semantics. Text here may reflect those for its own readers but cites
+their owner instead of becoming a second source. Route new findings of those
+kinds through [mcp-capture](../mcp-capture/SKILL.md).
+
+## Choose the surface
+
+| Surface | Path | Holds |
+| --- | --- | --- |
+| Code comment | `src/ts/` | Why non-obvious code exists, including a workaround for Odoo behaviour |
+| TSDoc | `src/ts/` | Contract a caller of an exported function relies on |
+| README | `README.md` | Orientation, setup, configuration and navigation |
+| Docs | `docs/api.md`, `docs/exports.md` | Public protocol, tool, resource and delivery contracts |
+| Docs | `docs/development.md` | Checks, source map, packaging, CI and release |
+| Docs | `docs/ownership.md` | Ownership, work homes and cross-product boundaries |
+| Tool description | `src/ts/tool-contracts.json` | Per-call minimum for an agent |
+| Served topic | `src/godoo_mcp_server/skills/` | Multi-step procedures and choices between tools |
+| Maintainer skill | `.agents/skills/` | Repository procedures; never served |
+
+**Tool descriptions versus served topics.** A tool description is sent with
+every `tools/list`, so every client pays for it on every session. It says what
+the tool does, its required inputs, its hazards (writes, external effects,
+uncertain outcomes) and its hard limits, in a few sentences. A served topic is
+read on demand through `guidance_get` or `skill://odoo/...`; it holds
+procedures that span several calls, how to choose between tools, how to
+interpret results and when to stop. Put each claim on one of them. A
+description may point to a topic by path; a topic may name a tool and rely on
+its description rather than restate it. Moving a claim between them changes
+what clients see; treat it as a contract change and check `docs/api.md` and the
+tests that pin `tool-contracts.json`. Served-topic content follows
+[mcp-guidance-authoring](../mcp-guidance-authoring/SKILL.md).
+
+When the same fact matters to several readers (a tool description, a topic and
+`docs/api.md`), write each reflection for its reader by hand. Never generate
+consumer text from another knowledge base.
+
+## Atlas markers
+
+Odoo server behaviour, by version, edition and module, is owned by Atlas as
+facts with executable checks. When text here depends on Odoo behaviour that can
+change between versions, mark the Atlas fact it depends on:
+
+- TSDoc: `@see atlas:base/create-record-basic`
+- Code comment: `// atlas: base/create-record-basic`
+- Markdown, including served topics and docs: `<!-- atlas: base/create-record-basic -->`
+- `tool-contracts.json` descriptions have no comment syntax; mark the TSDoc or
+  code that implements the behaviour instead.
+
+Rules:
+
+- Fact IDs are public and may be cited. Fact text, verification records and
+  Atlas file paths are private: write the reflection in this project's own
+  words and never copy them.
+- Mark only version-sensitive Odoo behaviour, not every mention of Odoo, and
+  never this server's own conventions or Godoo library behaviour.
+- A marker records a dependency, not that the text is still correct; this
+  project's tests remain the first signal of breakage.
+- A marker naming an unknown fact ID is an error to fix here. If the fact does
+  not exist yet, send it to Atlas intake through mcp-capture and add the marker
+  once the ID exists; until then leave the text unmarked.
 
 ## Retrieve and answer
 
-Start with a supplied file/reference and its selected revision; otherwise use
-`rg --files docs .agents/skills src/godoo_mcp_server/skills` and scoped
-`rg -n 'term' README.md docs` before reading matches in context. Follow only
-useful linked sources. Cite the path/section and source revision or dirty-state
-qualification; identify missing/inaccessible coverage. Retrieval/freshness
-assessment is read-only, including config and observation files. A discrepancy
-does not authorize an edit. Available `explain-system` can research a bounded
-mechanism; this procedure retains the selected knowledge operation.
+Start from a supplied file or reference. Otherwise search:
+
+```sh
+rg --files docs .agents/skills src/godoo_mcp_server/skills
+rg -n 'term' README.md docs src/godoo_mcp_server/skills src/ts/tool-contracts.json
+rg -n 'atlas:' src docs README.md      # existing fact dependencies
+```
+
+Cite the path and heading, and qualify uncommitted or branch-only content. Say
+what is not covered. Queries are read-only; a discrepancy found while answering
+does not authorize an edit. Use **explain-system** for an explanation that needs
+research.
 
 ## Author or revise
 
-Search existing coverage before adding a page. Use available `technical-writing`
-for composition. Without it, lead with the reader's task, exact interface/example
-and prerequisites; keep proposed, inspected, tested, published and deployed claims
-distinct. Preserve sources, licenses, version limits, dates and uncertainty.
+1. Classify the claim with "What this project owns". A claim owned elsewhere
+   goes to mcp-capture, not into these files.
+2. Pick the surface from the table and search existing coverage there first;
+   amend before adding a page. Name a new page for its lasting subject.
+3. Write with **technical-writing** when available. Keep proposed, tested,
+   released and deployed claims distinct, and keep version limits and dates.
+4. In the same change, fix or remove every statement the edit contradicts,
+   including the other surfaces that reflect the same claim.
+5. Add or update Atlas markers per the rules above.
 
-- `README.md`: orientation, setup and navigation.
-- `docs/api.md`: public protocol/tool/resource contracts.
-- `docs/development.md`: native checks, packaging and release mechanics.
-- `docs/ownership.md`: ownership, work and cross-product boundaries.
-- `.agents/skills/`: maintainer procedures, never the served bundle.
-- `src/godoo_mcp_server/skills/`: consumer guidance. Read and follow
-  [mcp-guidance-authoring](../mcp-guidance-authoring/SKILL.md) for its manifest,
-  resources/tool discovery, provenance, CC0 and meaningful validation obligations.
+Before implementing a user-visible contract change, the docs can carry the
+proposed contract with open choices marked; after the change, describe only
+what the source supports. Delivery follows **mafe-si:deliver-change**; the PR
+updates the docs whose described behaviour changed.
 
-Keep private company policy and business evidence in their authorized private
-home. Public content may explain generic Odoo limits, not company roles/visibility
-as universal rules. Working research uses owner-paths; unresolved requests or
-remaining acceptance go through [mcp-capture](../mcp-capture/SKILL.md) as a distinct
-work part, without returning this selected knowledge operation to a router.
+## Move or consolidate
 
-Before implementation of a user/operator contract change, prepare the smallest
-useful proposed example/guide in the existing page, with open choices explicit.
-After verification, compare affected claims/examples/setup with the actual source
-and observed result. Promote only supported behavior to current; retain limits
-and linked remaining work. A no-impact change needs no invented documentation edit.
+Find incoming references first:
 
-Read target files and dirty state before editing; preserve unrelated bytes and
-use an isolated checkout when needed. Make the scoped edit with ordinary file
-tools, inspect `git diff -- PATH`, and read the real destination back. Commits/PRs
-follow project integration policy; an edit grants no publication or deployment.
+```sh
+rg -n 'old-path|old-heading' README.md docs .agents src/godoo_mcp_server/skills src/ts
+```
 
-## Move, consolidate or assess freshness
+Merge only equivalent claims; keep version and audience differences distinct.
+Keep stable paths and anchors where practical and repair every reference. Moving
+a served topic changes `src/ts/guidance.ts`, the `guidance_get` path enum and
+the bundle index; follow mcp-guidance-authoring.
 
-Inspect incoming references with `rg -n 'old-path|old-heading' README.md docs .agents`
-and the relevant served bundle when affected. Preserve stable paths/anchors where
-practical; repair affected links/indexes within scope. Combine genuinely equivalent
-claims while preserving version and audience differences. Keep contradictory
-evidence qualified until settled; never rewrite a dated proposal as though it
-had always reflected a later decision. For report-only maintenance, return the
-finding and source without writing anything.
+## Assess freshness
 
-For docs-only edits, check affected relative links/anchors, examples against
-the declared interface, and `git diff --check`. No product/container/model suite
-is required merely for prose. For skill changes, run skill-creator's structural
-validator and inspect discovery/resources. Served content and changed executable
-contracts use their specific authoring/verifier checks. A link/syntax pass is not
-behavioral, package, runtime or client-acceptance proof. Return changed paths,
-retrievable references, actual checks, inherited findings and remaining limits.
+Compare claims with the current source (`src/ts/tools.ts`,
+`src/ts/tool-contracts.json`, `src/ts/guidance.ts`, `justfile`,
+`.github/workflows/`) and report each as supported, contradicted or unresolved.
+A correction needs edit scope.
+
+## Check
+
+For prose: check changed relative links and anchors, examples against the
+declared interface, and `git diff --check`. For skills: run the skill-creator
+validator. Served topics and tool descriptions also need the checks in
+mcp-guidance-authoring and [mcp-verification](../mcp-verification/SKILL.md).

@@ -1,124 +1,114 @@
 ---
 name: mcp-capture
-description: Retain, triage or retrieve godoo-mcp-server GitHub requests, work breakdowns and deferred observations; preserve source identity, privacy and remaining acceptance.
+description: Retain, triage or retrieve godoo-mcp-server requests, work breakdowns, decisions and deferred observations in its GitHub issues, and route findings this project does not own (Odoo server behaviour to Atlas intake, library or Stateman behaviour to their projects). Project knowledge itself uses mcp-docs.
 ---
 
-# Capture operational MCP work
+# Capture godoo-mcp-server work
 
-Work in the explicitly selected godoo-mcp-server checkout. Read its `AGENTS.md`
-and [ownership conventions](../../../docs/ownership.md). The default repository
-is `godoo-dev/godoo-mcp-server` at
-https://github.com/godoo-dev/godoo-mcp-server. Verify `git remote -v` and
-`gh repo view godoo-dev/godoo-mcp-server --json nameWithOwner,url,visibility,hasIssuesEnabled`
-before a write; a mismatch blocks that write. Always pass the explicit repository.
-Ignored local `.mafe-si.toml` supplies machine-specific category/evidence bindings;
-do not fall back to inherited HQ intake. Missing private bindings do not block
-public work with the verified repository.
+The tracker is GitHub issues on the public repository `godoo-dev/godoo-mcp-server`.
+Pass `--repo godoo-dev/godoo-mcp-server` on every `gh` command. Private
+destinations, if any, are bound in the ignored local `.mafe-si.toml`; their
+absence never blocks public work.
 
-## Select purpose and home
+## Classify first
 
-Before composing, choose the audience and purpose. Requests, actionable deferred
-observations, open decisions and remaining acceptance belong in GitHub issues.
-Canonical product knowledge goes through [mcp-docs](../mcp-docs/SKILL.md) with the
-selected destination and sources. Rich provisional research/review packets use
-owner-paths outside source unless the user or established discussion explicitly
-selects GitHub for that detail. Link distinct homes; do not publish the packet
-merely for durability. A missing supporting home blocks only that supporting
-write, not a self-contained work record.
+Decide what the material is before writing anything:
 
-Use available `reporting-for-humans` for work text after choosing its destination.
-Without it, write a self-contained problem/result, essential evidence and limits,
-material decisions, actual disposition, remaining acceptance and next actor/action.
-Preserve attributed authority versus suggestions. Keep API-access blockers useful:
-state what could not be checked, its impact and who can supply the missing input.
-Never publish private identities, company hosts, original source keys, thread/local
-paths or private links in titles, bodies, comments, labels, attachments or metadata.
-Summarize essential qualified meaning when the evidence is inaccessible publicly.
+| Material | Home |
+| --- | --- |
+| Request, decision, remaining work, actionable deferred observation | Issue here |
+| Knowledge this project owns (MCP tools, served guidance, runtime, release) | [mcp-docs](../mcp-docs/SKILL.md) |
+| Odoo server behaviour, by version, edition or module | Atlas intake (below) |
+| Godoo client-library behaviour: client configuration, errors, helper semantics | The owning library project: `godoo-dev/godoo-ts` or `godoo-dev/godoo-py` |
+| Stateman planning, apply and target semantics | `godoo-dev/godoo-stateman` |
+| Synthesis or decisions spanning several components | The owner's cross-project workspace, as links to the owners |
+| Working notes, research packets | `.scratch/` (owner-paths); keep what matters through docs or an issue |
+
+Only Odoo claims go to Atlas. This server's conventions, Godoo library behaviour
+and retired CLI behaviour are not Atlas facts, even when they were learned while
+investigating Odoo.
+
+## Route what this project does not own
+
+This session writes only this repository's records. For another owner:
+
+1. Write the finding as a short handoff: the claim, the Odoo version, edition
+   and modules involved, how it was observed, and which text here depends on it.
+2. Hand it over through **mafe-si:coordinate-projects**; the receiving project
+   retains it from its own session. A handoff proposal sends nothing by itself.
+3. For Odoo behaviour (Atlas intake): once Atlas reports the fact ID, add the
+   reflection and its `atlas:<fact-id>` marker here through mcp-docs. Until
+   then the dependent text stays unmarked; if work here is blocked on the fact,
+   keep an issue here that names the dependency without quoting private Atlas
+   text or paths.
+
+## Decide whether to write
+
+Write for an explicit request, an actionable follow-up, a blocker, an open
+decision or remaining acceptance. A handback, merge or passing check alone
+warrants no write; routine progress stays in the session and an open PR's
+correction stays in that PR. Recording material does not authorize executing it.
 
 ## Retrieve and deduplicate
 
-Open an explicit reference first:
+Open a referenced record with its comments:
 
 ```sh
-gh issue view NUMBER --repo godoo-dev/godoo-mcp-server --json number,title,body,state,url,labels,assignees,comments
-gh pr view NUMBER --repo godoo-dev/godoo-mcp-server --json title,body,state,url,mergeCommit,mergedAt,files
+gh issue view NUMBER --repo godoo-dev/godoo-mcp-server --comments
+gh pr view NUMBER --repo godoo-dev/godoo-mcp-server --comments
 ```
 
-Otherwise search scoped terms in issues and PRs with `--state all`; inspect likely
-matches and relevant linked decisions. For complete source-identity lookup,
-including closed issues, use the paginated repository endpoint rather than
-relying on a search index or the CLI's default limit:
+Without a reference, search open and closed issues and PRs, then read likely
+matches:
 
 ```sh
-gh api --paginate 'repos/godoo-dev/godoo-mcp-server/issues?state=all&per_page=100' \
-  --jq '.[] | select(has("pull_request") | not) | {number,title,state,body,html_url}'
+gh search issues --repo godoo-dev/godoo-mcp-server --include-prs 'terms'
+gh issue list --repo godoo-dev/godoo-mcp-server --state all --search 'terms' --limit 50
 ```
 
-For incoming material retain a stable identity privately, including provider,
-namespace and full original key. Public intake uses the marker
-`<!-- godoo-capture-source: sha256:HEX -->`, where HEX is SHA256 of the stable,
-unambiguously serialized source identity. Keep the original-to-hash mapping in
-private evidence. Search for the exact marker across all pages/states and inspect
-semantic coverage, including PRs. Retries reuse the full identity. A distinct
-correction or independently tracked split gets a distinct identity and links the
-original outcome. GitHub provides no atomic idempotent create: serialize intake;
-if a write receipt is uncertain, reconcile exact identity and current coverage
-before retrying. Retain any acknowledged URL before validation and read it directly:
-REST lists can lag a new issue even when direct readback succeeds. An absent
-list/search hit alone does not prove failure. Without a conclusive receipt, defer
-a duplicate create and report uncertain capture. Multiple matches require
-reconciliation, not another issue.
-Existing canonical coverage stays canonical; do not recreate completed delivery.
+Update or link existing coverage instead of creating a duplicate. Completed
+delivery stays closed; a follow-up gets its own issue that links it.
 
-## Retain, triage and update
-
-Prepare exact text in an external body file. Inspect `gh issue create --help` or
-`gh issue edit --help` for unfamiliar operations. Concrete writes are:
+Incoming material from another system carries a source marker in the body,
+`<!-- godoo-capture-source: sha256:HEX -->`, where HEX is the SHA-256 of the
+source's provider, namespace and full original key. Keep the original key
+private. Search for the exact marker before creating:
 
 ```sh
-gh issue create --repo godoo-dev/godoo-mcp-server --title 'Concrete outcome' --body-file "$body_file"
-gh issue edit NUMBER --repo godoo-dev/godoo-mcp-server --body-file "$body_file"
+gh search issues --repo godoo-dev/godoo-mcp-server --include-prs 'godoo-capture-source: sha256:HEX'
 ```
 
-Read back every real result with `issue view`, including metadata and comments;
-verify meaning, source marker, links, privacy, actual state and repository. Retain
-the actual URL. Readback failure does not undo a successful write.
+## Create, update and close
 
-Reuse existing requests and preserve the original outcome, decisions and useful
-breakdown. Link independently useful pieces; distinguish ordering, dependencies,
-ideas and agreed work in prose/checklists. GitHub open state does not reset an
-existing testing/deferred/untriaged disposition: state it in the body. Do not
-invent priority, assignment, scheduling or a worker claim. Retain likely supplier
-ownership and dependencies without contacting agents or opening other projects'
-records. Report unresolved owner decisions to Marc in this conversation.
+Compose the body once from the reader's point of view, using
+**reporting-for-humans** when available: the problem or outcome, essential
+facts and limits, decisions, current disposition (untriaged, open, testing,
+deferred, waiting on a named input) and next actor. Link supporting material
+instead of copying it. Public text carries no private identities, hosts, local
+or thread paths, original source keys or private links.
 
-At a consequential handback, retrieve the active record and known affected linked
-summaries/discussions. Recompose changed current claims: result, limits, decision
-or blocker, remaining acceptance and next actor. Reconcile contradictory active
-summaries against the authoritative current account, including evaluation versus
-production scope. Preserve dated proposals and closed delivery accounts as history.
-Do not append every handback to the body. Skip routine unchanged progress. Use
-`gh issue comment NUMBER --repo godoo-dev/godoo-mcp-server --body-file "$body_file"`
-only for an authorized substantive discussion/update deserving readers' attention;
-no migration chatter or agent messages. Batch related changes.
+Run **mafe-si:pre-post** immediately before each tracker write, then:
 
-Retain off-task actionable observations briefly through this same search,
-source, placement and readback path, then resume the task. Capture does not
-execute the observation. Respect report-only scope. Close with
-`gh issue close NUMBER --repo godoo-dev/godoo-mcp-server --reason completed`
-only for established completion; use `--reason 'not planned'` for an authorized
-supersession/withdrawal and preserve its rationale in the body first. A tracking
-redirect says tracking migrated, not problem fixed. Do not reopen completed work
-because later operational acceptance remains elsewhere.
+```sh
+gh issue create --repo godoo-dev/godoo-mcp-server --title 'Concrete outcome' --body-file "$body"
+gh issue edit NUMBER --repo godoo-dev/godoo-mcp-server --body-file "$body"
+gh issue comment NUMBER --repo godoo-dev/godoo-mcp-server --body-file "$body"
+gh issue close NUMBER --repo godoo-dev/godoo-mcp-server --reason completed
+```
 
-## Incoming owner invocation
+Read a record back only if the command reported an error. Keep the body current
+and short: update the body for changed claims, and comment only for a
+substantive update readers should notice. Close as `completed` only for
+established completion; use `--reason 'not planned'` for authorized
+supersession, with the rationale in the body first.
 
-Preserve supplied authority, source, existing grants/holdings and remaining
-acceptance. Retention alone accepts no implementation and launches no work.
-Return project identity, canonical URLs, created/updated/already-covered result,
-actual disposition, next actor and gaps through the current invocation only.
-Capture starts no cross-project conversations, mailbox polling or notifications.
-This project has no standing scheduler or `mafe-pending` dispatcher. An open PR correction stays
-in that PR when appropriate. A later operational fix retains linked remaining
-work and requires its own source-before-operation checks/authority; source merge
-does not itself authorize deployment, publication or business writes.
+Split larger work into linked issues or a checklist; preserve the original
+request's outcome when the breakdown changes. GitHub has no native blocked-by
+link here; state dependencies in the body. Do not invent priority, assignees or
+schedules. Report ownership conflicts and owner decisions to Marc in the
+conversation.
+
+## Deferred observations
+
+For an off-task finding, classify it, search for coverage, then write a brief
+issue (or a handoff for another owner) and return to the task.

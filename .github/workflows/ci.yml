@@ -19,8 +19,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: checks-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   UV_VERSION: '0.12.5'
@@ -58,20 +58,10 @@ jobs:
           echo "4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d  $RUNNER_TEMP/just.tar.gz" | sha256sum --check -
           tar -xzf "$RUNNER_TEMP/just.tar.gz" -C "$RUNNER_TEMP" just
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-      - name: Typecheck, lint, unit, Workers runtime and gate rejection checks
-        run: just offline "$RUNNER_TEMP/offline"
-      - name: Pack once and exercise the isolated installed package
+      - name: Full check (offline, package, image, Odoo majors, archive)
         env:
           SOURCE_REF: ${{ inputs.source_ref || github.ref }}
-        run: just package "$RUNNER_TEMP/candidate" "$SOURCE_REF" "$RUNNER_TEMP/offline"
-      - name: Build one exact candidate image without recompiling source
-        run: just image "$RUNNER_TEMP/candidate"
-      - name: Odoo18 Testcontainers through source, installed package and exact image
-        run: just odoo "$RUNNER_TEMP/candidate" 18
-      - name: Odoo19 Testcontainers through source, installed package and exact image
-        run: just odoo "$RUNNER_TEMP/candidate" 19
-      - name: Reject incomplete proof and reload the same image archive
-        run: just archive "$RUNNER_TEMP/candidate"
+        run: just check "$RUNNER_TEMP" "$SOURCE_REF"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

@@ -3,12 +3,12 @@
 The maintained executable is:
 
 ```sh
-node .github/testing/http-probe.mjs --command "node $PWD/dist/node.mjs" --evidence "$evidence/http"
+node .github/testing/http-probe.mjs --command "node $PWD/dist/node.mjs" --evidence "$dir/http"
 ```
 
 `just offline` and `just package` invoke this same driver. It clears
-ambient Odoo fallbacks and records responses/server logs before reaping its PID.
-The raw recipe below supports focused diagnosis.
+ambient Odoo fallbacks, writes responses and server logs to the given directory
+and stops its process. The manual recipe below supports focused diagnosis.
 
 This exercises an owned server process with the current environment. It needs no
 Docker, Odoo instance, model call or external account. Use this path for protocol
@@ -16,29 +16,29 @@ and bundled-resource checks; use Testcontainers for authenticated tools and writ
 
 ## Start and check readiness
 
-From the checkout root, create a unique retained evidence directory according to
-owner-paths. Record the revision/environment and select an unused loopback port.
+From the checkout root, pick a scratch directory `$dir` outside tracked source
+(for example `.scratch/http`) and an unused loopback port.
 Clear Odoo fallback variables for this process so a missing-header check cannot
 silently use a real configured account:
 
 ```bash
 env -u ODOO_URL -u ODOO_DATABASE -u ODOO_DB -u ODOO_USERNAME -u ODOO_USER \
     -u ODOO_PASSWORD HOST=127.0.0.1 PORT="$port" \
-    node dist/node.mjs >"$evidence/server.log" 2>&1 &
+    node dist/node.mjs >"$dir/server.log" 2>&1 &
 mcp_pid=$!
 base="http://127.0.0.1:$port"
 ```
 
 Install cleanup for this PID before driving. Poll `GET $base/healthz` with a short
 request timeout and an overall 30-second deadline. Require HTTP 200 and
-`{"status":"ok"}`; record the selected URL and PID. Early exit or deadline expiry
-requires the server log, not another unbounded launch. Health establishes listener
+`{"status":"ok"}`. On early exit or deadline expiry, read the server log before
+another launch. Health establishes listener
 readiness only; the next requests establish MCP behavior.
 
 ## Drive and observe
 
-Use `curl --max-time 5 -i` or a real HTTP client; retain status, relevant response
-headers and body. Each modern request has:
+Use `curl --max-time 5 -i` or a real HTTP client and read status, relevant
+response headers and body. Each modern request has:
 
 ```text
 Content-Type: application/json
@@ -84,11 +84,10 @@ Responses may be JSON or SSE (`data: {JSON}`); parse accordingly. Discovery and
 `odoo://model/...` resources in this no-Odoo trial. Real user/ACL and write outcomes
 remain unverified here.
 
-## Retain and stop
+## Stop
 
-Retain the request method/metadata, response status/header/body, revision and server
-log; record which rows actually ran. Stop and wait for the exact process started
-above, using a bounded graceful shutdown and force only that owned PID if needed.
-Confirm it exited and the retained evidence remains readable. On failure, preserve
-the first response/log, check readiness again and classify the failure before a
-bounded retry. A failed or interrupted observation is not a pass.
+Stop the exact process started above with a bounded graceful shutdown, forcing
+only that PID if needed. On a failure, read the first failing response and the
+server log, check readiness again and decide whether the environment, the probe
+or the server is at fault before retrying. A failed or interrupted run is not a
+pass.
