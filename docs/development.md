@@ -127,8 +127,9 @@ preflight reads and write atomic.
 ## CI and release configuration
 
 The [CI workflow](../.github/workflows/ci.yml) runs on PRs targeting main, pushes
-to main and manual/reusable invocations. One `validation` job runs `just check`;
-the stable `required` aggregate rejects any non-success result. A newer push to a
+to main and manual/reusable invocations. One `validation` job runs the stages of
+`just check` in the same order, one step per stage so timings and failures show
+per stage; the stable `required` aggregate rejects any non-success result. A newer push to a
 PR cancels that PR's older run; runs on main, manual runs and publish
 revalidation each get their own concurrency group and are never cancelled by
 another run. Local runs do not establish hosted permissions, protections or

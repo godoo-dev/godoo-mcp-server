@@ -23,9 +23,15 @@ just check "$dir"            # full check; $dir is a new, empty directory outsid
 It runs every CI stage in order and stops at the first failure: `offline`,
 `package`, `image`, `odoo` for each major in the justfile's `odoo_majors`, and
 `archive`. Use a fresh directory per run: `package` refuses a directory that
-already holds a candidate. Its output is the result. CI runs the same command on GitHub-hosted
-`ubuntu-latest` for every PR to main, pushes to main and the publish workflow;
-the stable `required` job fails unless `validation` succeeds. Rely on CI on the
+already holds a candidate. Its output is the result.
+
+CI runs the same stages in the same order on GitHub-hosted `ubuntu-latest`, one
+workflow step per stage, for every PR to main, pushes to main and the publish
+workflow; the stable `required` job fails unless `validation` succeeds. When
+`odoo_majors` or the stage list changes, change the `validation` steps in
+`.github/workflows/ci.yml` to match. The two Odoo stages take most of the run
+time; splitting them into parallel jobs trades runner starts for waiting time
+and is the owner's decision. Rely on CI on the
 PR for the full run; run `just check` yourself only when no CI run will cover it.
 
 Focused commands while iterating:
