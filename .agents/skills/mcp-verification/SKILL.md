@@ -35,8 +35,9 @@ just offline "$dir/offline"            # lint, build, all unit tests and the rea
 
 Complexity: Biome has no blocking complexity rule yet. Enabling
 `noExcessiveCognitiveComplexity` at its default limit flags existing functions;
-that work is tracked as an owner decision, so do not add the rule or
-suppressions in an unrelated change.
+that work waits for an owner decision in
+[#56](https://github.com/godoo-dev/godoo-mcp-server/issues/56), so do not add
+the rule or suppressions in an unrelated change.
 
 ## Choose the tier
 
