@@ -3,6 +3,6 @@ repos:
     hooks:
       - id: biome
         name: Biome
-        entry: pnpm exec biome check
+        entry: corepack pnpm exec biome check
         language: system
         files: '^(src/ts/|tests/ts/|\.github/(build|testing)/).*\.(ts|json|mjs)$'

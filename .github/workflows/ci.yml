@@ -52,16 +52,12 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           python-version: '3.14.7'
-      - name: Install just
-        run: |
-          curl --fail --location --silent --show-error https://github.com/casey/just/releases/download/1.58.0/just-1.58.0-x86_64-unknown-linux-musl.tar.gz --output "$RUNNER_TEMP/just.tar.gz"
-          echo "4a5cc2f53e6f0f8c59092a6cc38291eb729d46a7dd95d3ae582008881b84931d  $RUNNER_TEMP/just.tar.gz" | sha256sum --check -
-          tar -xzf "$RUNNER_TEMP/just.tar.gz" -C "$RUNNER_TEMP" just
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Install project tools
+        run: pnpm install --frozen-lockfile
       - name: Full check (offline, package, image, Odoo majors, archive)
         env:
           SOURCE_REF: ${{ inputs.source_ref || github.ref }}
-        run: just check "$RUNNER_TEMP" "$SOURCE_REF"
+        run: pnpm exec just check "$RUNNER_TEMP" "$SOURCE_REF"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
