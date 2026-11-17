@@ -240,7 +240,7 @@ export async function executeCode(
     );
     // One synchronous drive of the guest; returns its outcome once the program has finished.
     const poll = (): Outcome | undefined => {
-      if (port.signal.aborted || Date.now() - started > CODE_LIMITS.deadline_ms) stop("deadline");
+      if (!terminal && Date.now() - started > CODE_LIMITS.deadline_ms) stop("deadline");
       if (terminal) throw new Error(terminal);
       settle();
       const encoded = step();
