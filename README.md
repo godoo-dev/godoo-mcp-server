@@ -4,8 +4,7 @@ Operational MCP access to Odoo through record, discovery, chatter, activity,
 action, attachment, general model-method and user tools, native sandboxed client/introspection Code Mode, plus bundled workflow
 guidance. The TypeScript server uses `@godoo-dev/client` and each caller's Odoo permissions.
 
-This is the operational Odoo MCP. Odoo Atlas provides a separate read-only
-knowledge MCP. `godoo-proxy` owns the broader commercial OAuth/SSO gateway.
+This is the operational Odoo MCP. `godoo-proxy` owns the broader commercial OAuth/SSO gateway.
 The public [organization overview](https://github.com/godoo-dev/.github/blob/main/profile/README.md)
 describes the product family. This repository owns its source, documentation and
 [GitHub work](https://github.com/godoo-dev/godoo-mcp-server/issues); see
