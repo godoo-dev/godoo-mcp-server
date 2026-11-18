@@ -1,8 +1,9 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import ts from "typescript";
+import { isIdentifier } from "typescript/unstable/ast";
+import { API } from "typescript/unstable/sync";
 import { meteredWasm } from "./meter-wasm.mjs";
 
 let prepared;
@@ -21,30 +22,40 @@ async function prepareInputs() {
     legalComments: "inline",
   });
   const declarations = {};
-  for (const name of ["client", "introspection"]) await collectPackage(declarations, name);
+  const api = new API();
+  try {
+    for (const name of ["client", "introspection"]) await collectPackage(api, declarations, name);
+  } finally {
+    api.close();
+  }
   return { "godoo:code-guest": guest.outputFiles[0].text, "godoo:sdk-declarations": declarations };
 }
 
-async function collectPackage(declarations, name) {
+async function collectPackage(api, declarations, name) {
   const root = dirname(fileURLToPath(import.meta.resolve(`@godoo-dev/${name}/portable`)));
   const directories = name === "client" ? [root, dirname(root)] : [root];
   for (const directory of directories) {
     for (const file of await readdir(directory)) {
       if (!file.endsWith(".d.mts")) continue;
       if (name === "client" && directory !== root && file === "index.d.mts") continue;
-      await collectDeclarations(declarations, join(directory, file), file);
+      collectDeclarations(api, declarations, join(directory, file));
     }
   }
 }
 
-async function collectDeclarations(declarations, path, file) {
-  const source = await readFile(path, "utf8");
-  const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
-  for (const statement of ast.statements) {
-    if (!statement.name || !ts.isIdentifier(statement.name)) continue;
-    const key = statement.name.text;
-    // Prefer the credential-free portable client declarations over the network root.
-    declarations[key] ??= statement.getFullText(ast).trim();
+function collectDeclarations(api, declarations, path) {
+  const snapshot = api.updateSnapshot({ openFiles: [path] });
+  try {
+    const ast = snapshot.getDefaultProjectForFile(path)?.program.getSourceFile(path);
+    if (!ast) throw new Error(`Cannot parse SDK declarations: ${path}`);
+    for (const statement of ast.statements) {
+      if (!statement.name || !isIdentifier(statement.name)) continue;
+      const key = statement.name.text;
+      // Prefer the credential-free portable client declarations over the network root.
+      declarations[key] ??= statement.getFullText(ast).trim();
+    }
+  } finally {
+    snapshot.dispose();
   }
 }
 
