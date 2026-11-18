@@ -152,38 +152,36 @@ describe("S3 and R2 fetch storage", () => {
     expect(calls.map((request) => request.method)).toEqual(["PUT", "HEAD", "DELETE"]);
   });
 
-  it.each([
-    "put",
-    "head",
-    "list",
-    "delete",
-  ])("cancels the actual S3 %s HTTP request with its caller signal", async (operation) => {
-    const controller = new AbortController();
-    let started: (() => void) | undefined;
-    const ready = new Promise<void>((resolve) => {
-      started = resolve;
-    });
-    const fetchImpl: typeof fetch = async (input) => {
-      const request = input as Request;
-      started?.();
-      return new Promise((_resolve, reject) => {
-        request.signal.addEventListener("abort", () => reject(request.signal.reason), {
-          once: true,
-        });
+  it.each(["put", "head", "list", "delete"])(
+    "cancels the actual S3 %s HTTP request with its caller signal",
+    async (operation) => {
+      const controller = new AbortController();
+      let started: (() => void) | undefined;
+      const ready = new Promise<void>((resolve) => {
+        started = resolve;
       });
-    };
-    const store = createStorage(CONFIG, fetchImpl);
-    const pending =
-      operation === "put"
-        ? store.put(key, new Uint8Array([1]), {}, controller.signal)
-        : operation === "list"
-          ? collect(store.list("exports/v1/", controller.signal))
-          : store[operation as "head" | "delete"](key, controller.signal);
-    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
-    await ready;
-    controller.abort();
-    await rejected;
-  });
+      const fetchImpl: typeof fetch = async (input) => {
+        const request = input as Request;
+        started?.();
+        return new Promise((_resolve, reject) => {
+          request.signal.addEventListener("abort", () => reject(request.signal.reason), {
+            once: true,
+          });
+        });
+      };
+      const store = createStorage(CONFIG, fetchImpl);
+      const pending =
+        operation === "put"
+          ? store.put(key, new Uint8Array([1]), {}, controller.signal)
+          : operation === "list"
+            ? collect(store.list("exports/v1/", controller.signal))
+            : store[operation as "head" | "delete"](key, controller.signal);
+      const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+      await ready;
+      controller.abort();
+      await rejected;
+    },
+  );
 
   it("lists every page, decodes XML names and preserves continuation tokens", async () => {
     const calls: URL[] = [];

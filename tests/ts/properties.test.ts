@@ -240,16 +240,15 @@ describe("friendly property contracts through the published client scope", () =>
     ).toEqual([{ id: 42, properties: { [field]: { priority: "high" } } }]);
   });
 
-  it.each([
-    "properties.",
-    "properties.a.b.c",
-    "properties..x",
-  ])("rejects malformed path before RPC %s", async (path) => {
-    await expect(readProperties(memory.client, model, [42], [path])).rejects.toThrow(
-      "Use properties",
-    );
-    expect(memory.calls).toHaveLength(0);
-  });
+  it.each(["properties.", "properties.a.b.c", "properties..x"])(
+    "rejects malformed path before RPC %s",
+    async (path) => {
+      await expect(readProperties(memory.client, model, [42], [path])).rejects.toThrow(
+        "Use properties",
+      );
+      expect(memory.calls).toHaveLength(0);
+    },
+  );
 
   it("keeps raw reads unchanged and empty friendly reads empty", async () => {
     expect(await readProperties(memory.client, model, [], [`properties.${field}`])).toEqual([]);
@@ -329,64 +328,54 @@ describe("friendly property contracts through the published client scope", () =>
     await expect(result).rejects.not.toThrow(/opaque/);
   });
 
-  it.each([
-    {},
-    { [field]: {} },
-    { [field]: [] },
-  ])("rejects empty patches before RPC", async (patch) => {
-    await expect(prepareUpdate(memory.client, model, 42, patch, {})).rejects.toThrow("nonempty");
-    expect(memory.calls).toHaveLength(0);
-  });
+  it.each([{}, { [field]: {} }, { [field]: [] }])(
+    "rejects empty patches before RPC",
+    async (patch) => {
+      await expect(prepareUpdate(memory.client, model, 42, patch, {})).rejects.toThrow("nonempty");
+      expect(memory.calls).toHaveLength(0);
+    },
+  );
 
-  it.each([
-    { project_id: 8 },
-    { [field]: {} },
-    { other_properties: [] },
-  ])("rejects parent moves and raw mixing before record reads", async (values) => {
-    await expect(
-      prepareUpdate(memory.client, model, 42, { [field]: { priority: "normal" } }, values),
-    ).rejects.toThrow();
-    expect(memory.calls.some((call) => call.method === "read")).toBe(false);
-  });
+  it.each([{ project_id: 8 }, { [field]: {} }, { other_properties: [] }])(
+    "rejects parent moves and raw mixing before record reads",
+    async (values) => {
+      await expect(
+        prepareUpdate(memory.client, model, 42, { [field]: { priority: "normal" } }, values),
+      ).rejects.toThrow();
+      expect(memory.calls.some((call) => call.method === "read")).toBe(false);
+    },
+  );
 
-  it.each([
-    "missing",
-    "duplicate",
-    "kind",
-    "value",
-    "option",
-    "extra",
-  ])("rejects malformed untouched values: %s", async (corruption) => {
-    const entries = memory.rows.get(42)?.[field] as PropertyObject[];
-    if (corruption === "missing") entries.splice(1, 1);
-    if (corruption === "duplicate") entries.push(structuredClone(entries[1]));
-    if (corruption === "kind") entries[1].type = "integer";
-    if (corruption === "value") entries[1].value = "bad";
-    if (corruption === "option") entries[0].value = "unmapped-private-option";
-    if (corruption === "extra")
-      entries.push({ ...definition("private-new", "New", "json"), value: null });
-    const result = prepareUpdate(memory.client, model, 42, { [field]: { notes: "Changed" } }, {});
-    await expect(result).rejects.toThrow("all current values");
-    await expect(result).rejects.not.toThrow(/private|opaque/);
-  });
+  it.each(["missing", "duplicate", "kind", "value", "option", "extra"])(
+    "rejects malformed untouched values: %s",
+    async (corruption) => {
+      const entries = memory.rows.get(42)?.[field] as PropertyObject[];
+      if (corruption === "missing") entries.splice(1, 1);
+      if (corruption === "duplicate") entries.push(structuredClone(entries[1]));
+      if (corruption === "kind") entries[1].type = "integer";
+      if (corruption === "value") entries[1].value = "bad";
+      if (corruption === "option") entries[0].value = "unmapped-private-option";
+      if (corruption === "extra")
+        entries.push({ ...definition("private-new", "New", "json"), value: null });
+      const result = prepareUpdate(memory.client, model, 42, { [field]: { notes: "Changed" } }, {});
+      await expect(result).rejects.toThrow("all current values");
+      await expect(result).rejects.not.toThrow(/private|opaque/);
+    },
+  );
 
-  it.each([
-    false,
-    true,
-    0,
-    -1,
-    "7",
-    [7, "Parent"],
-  ])("requires explicit positive create parent %s", async (parent) => {
-    await expect(
-      prepareCreate(
-        memory.client,
-        model,
-        { [field]: { priority: "high" } },
-        { project_id: parent },
-      ),
-    ).rejects.toThrow("positive definition-parent");
-  });
+  it.each([false, true, 0, -1, "7", [7, "Parent"]])(
+    "requires explicit positive create parent %s",
+    async (parent) => {
+      await expect(
+        prepareCreate(
+          memory.client,
+          model,
+          { [field]: { priority: "high" } },
+          { project_id: parent },
+        ),
+      ).rejects.toThrow("positive definition-parent");
+    },
+  );
 
   it("preflights all create containers and returns one sparse raw payload", async () => {
     const result = await prepareCreate(

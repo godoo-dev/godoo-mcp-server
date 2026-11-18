@@ -98,16 +98,14 @@ describe("record result delivery", () => {
     ).rejects.toThrow("Private export storage is not configured correctly");
   });
 
-  it.each([
-    -1,
-    0.5,
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-  ])("rejects invalid byte limit %s", async (maxReturnBytes) => {
-    await expect(
-      deliverRecordResult({}, { ...options, maxReturnBytes }, fixture().runtime),
-    ).rejects.toThrow("max_return_bytes");
-  });
+  it.each([-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid byte limit %s",
+    async (maxReturnBytes) => {
+      await expect(
+        deliverRecordResult({}, { ...options, maxReturnBytes }, fixture().runtime),
+      ).rejects.toThrow("max_return_bytes");
+    },
+  );
 });
 
 describe("private artifacts", () => {
@@ -156,26 +154,25 @@ describe("private artifacts", () => {
     expect(object.content).toEqual(new Uint8Array([0, 255, 13, 10]));
   });
 
-  it.each([
-    "sign",
-    "put",
-    "head",
-  ] as const)("sanitizes %s failure and rolls back the invocation key", async (step) => {
-    const { runtime, objects, store } = fixture();
-    const original = store[step];
-    vi.spyOn(store, step).mockImplementationOnce(async (...args: unknown[]) => {
-      if (step === "put") await (original as (...args: unknown[]) => Promise<unknown>)(...args);
-      throw new Error("secret-password and business content");
-    });
-    await expect(
-      deliverArtifact(new Uint8Array([1]), { source: {} }, runtime),
-    ).rejects.toMatchObject({
-      message: "Private export delivery failed",
-      category: "export_failed",
-    });
-    expect(store.delete).toHaveBeenCalledOnce();
-    expect(objects.size).toBe(0);
-  });
+  it.each(["sign", "put", "head"] as const)(
+    "sanitizes %s failure and rolls back the invocation key",
+    async (step) => {
+      const { runtime, objects, store } = fixture();
+      const original = store[step];
+      vi.spyOn(store, step).mockImplementationOnce(async (...args: unknown[]) => {
+        if (step === "put") await (original as (...args: unknown[]) => Promise<unknown>)(...args);
+        throw new Error("secret-password and business content");
+      });
+      await expect(
+        deliverArtifact(new Uint8Array([1]), { source: {} }, runtime),
+      ).rejects.toMatchObject({
+        message: "Private export delivery failed",
+        category: "export_failed",
+      });
+      expect(store.delete).toHaveBeenCalledOnce();
+      expect(objects.size).toBe(0);
+    },
+  );
 
   it("rolls back uploads rejected by cancellation", async () => {
     const { runtime, store, objects } = fixture();
