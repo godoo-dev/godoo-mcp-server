@@ -220,3 +220,148 @@ describe("Node isolated Code Mode", () => {
     expect(await execute("return 3;", 7, port())).toMatchObject({ ok: true, result: 3 });
   });
 });
+
+describe("Node isolated Code Mode bridge protocol", () => {
+  const scripted = (body: string) =>
+    createNodeCodeExecutor(
+      new URL(
+        `data:text/javascript,${encodeURIComponent(`import {parentPort} from "node:worker_threads";\n${body}`)}`,
+      ),
+    );
+  const finished = `parentPort.postMessage({kind:"close",reason:"execution_finished"});`;
+  const resultOf = (value: string) =>
+    `parentPort.postMessage({kind:"result",result:{ok:true,result:${value},logs:[],elapsed_ms:0,wasm_bytes:0}});`;
+
+  it.each([
+    ["a non-record message", "parentPort.postMessage([1]);"],
+    ["an unknown kind", 'parentPort.postMessage({kind:"other"});'],
+    ["a result before close", resultOf("1")],
+    ["an invalid close reason", 'parentPort.postMessage({kind:"close",reason:"Bad"});'],
+    [
+      "a close with extra keys",
+      'parentPort.postMessage({kind:"close",reason:"execution_finished",extra:1});',
+    ],
+    ["an out-of-order rpc id", 'parentPort.postMessage({kind:"rpc",id:2,encoded:"{}"});'],
+    ["an rpc after close", `${finished}parentPort.postMessage({kind:"rpc",id:1,encoded:"{}"});`],
+    [
+      "an invalid result",
+      `${finished}parentPort.postMessage({kind:"result",result:{ok:true,error:"Bad",logs:[],elapsed_ms:0,wasm_bytes:0}});`,
+    ],
+    [
+      "a result with unknown keys",
+      `${finished}parentPort.postMessage({kind:"result",result:{ok:true,logs:[],elapsed_ms:0,wasm_bytes:0,extra:1}});`,
+    ],
+  ])("fails the bridge on %s", async (_name, body) => {
+    const bridge = port();
+    const result = await scripted(`${body}setInterval(()=>{},1000);`)("return 1;", 7, bridge);
+    expect(result).toMatchObject({ ok: false, error: "bridge_failed", logs: [], wasm_bytes: 0 });
+    // The port closes once: with bridge_failed, or earlier with the worker's own close reason.
+    expect(bridge.close.mock.calls).toEqual([
+      [body.startsWith(finished) ? "execution_finished" : "bridge_failed"],
+    ]);
+    expect(bridge.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("relays rpc responses and accepts the worker's close reason and result", async () => {
+    const bridge = port(async (encoded) => `echo:${encoded}`);
+    const result = await scripted(
+      `parentPort.on("message",(m)=>{parentPort.postMessage({kind:"close",reason:"custom_reason"});${resultOf("m")}});parentPort.postMessage({kind:"rpc",id:1,encoded:"payload"});`,
+    )("return 1;", 7, bridge);
+    expect(result).toMatchObject({
+      ok: true,
+      result: { kind: "response", id: 1, encoded: "echo:payload" },
+    });
+    expect(bridge.dispatch.mock.calls).toEqual([["payload"]]);
+    expect(bridge.close.mock.calls).toEqual([["custom_reason"]]);
+  });
+
+  it("keeps a validated guest failure result", async () => {
+    const bridge = port();
+    const result = await scripted(
+      `${finished}parentPort.postMessage({kind:"result",result:{ok:false,error:"guest_error",logs:["a"],elapsed_ms:3,wasm_bytes:5}});`,
+    )("return 1;", 7, bridge);
+    expect(result).toMatchObject({ ok: false, error: "guest_error", logs: ["a"], wasm_bytes: 5 });
+    expect(bridge.close.mock.calls).toEqual([["execution_finished"]]);
+  });
+
+  it.each([
+    [
+      "throws synchronously",
+      () => {
+        throw new Error("boom");
+      },
+    ],
+    ["rejects", async () => Promise.reject(new Error("boom"))],
+    ["answers beyond the result bound", async () => "x".repeat(1024 * 1024 + 1)],
+  ])("fails the bridge when dispatch %s", async (_name, dispatch) => {
+    const bridge = port(dispatch as (encoded: string) => Promise<string>);
+    const result = await scripted(
+      'parentPort.postMessage({kind:"rpc",id:1,encoded:"{}"});setInterval(()=>{},1000);',
+    )("return 1;", 7, bridge);
+    expect(result).toMatchObject({ ok: false, error: "bridge_failed" });
+    expect(bridge.close.mock.calls).toEqual([["bridge_failed"]]);
+  });
+
+  it.each([
+    ["exits without a result", "parentPort.close();"],
+    ["throws", "throw new Error('worker failure');"],
+  ])("reports a crash when the worker %s", async (_name, body) => {
+    const bridge = port();
+    expect(await scripted(body)("return 1;", 7, bridge)).toMatchObject({
+      ok: false,
+      error: "sandbox_crashed",
+    });
+    expect(bridge.close.mock.calls).toEqual([["sandbox_crashed"]]);
+  });
+
+  it("refuses invalid identities and oversized source before starting a worker", async () => {
+    for (const [code, uid] of [
+      ["return 1;", 0],
+      ["return 1;", 1.5],
+      ["x".repeat(65537), 7],
+    ] as const) {
+      const bridge = port();
+      expect(await scripted(finished)(code, uid, bridge)).toMatchObject({
+        ok: false,
+        error: "source_limit",
+        logs: [],
+        wasm_bytes: 0,
+      });
+      expect(bridge.close.mock.calls).toEqual([["source_limit"]]);
+    }
+  });
+
+  it("reports sandbox_failed when closing the port throws", async () => {
+    const throwing = () => {
+      const bridge = port();
+      bridge.close.mockImplementation(() => {
+        throw new Error("close failed");
+      });
+      return bridge;
+    };
+    expect(await scripted(finished)("return 1;", 0, throwing())).toMatchObject({
+      ok: false,
+      error: "sandbox_failed",
+    });
+    expect(
+      await scripted("parentPort.postMessage([1]);setInterval(()=>{},1000);")(
+        "return 1;",
+        7,
+        throwing(),
+      ),
+    ).toMatchObject({ ok: false, error: "sandbox_failed" });
+    // A throwing close during a worker close message marks the bridge failed instead.
+    expect(
+      await scripted(`${finished}setInterval(()=>{},1000);`)("return 1;", 7, throwing()),
+    ).toMatchObject({ ok: false, error: "bridge_failed" });
+  });
+
+  it("cancels a running worker when the caller aborts", async () => {
+    const bridge = port();
+    const running = scripted("setInterval(()=>{},1000);")("return 1;", 7, bridge);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    bridge.close("caller_cancelled");
+    expect(await running).toMatchObject({ ok: false, error: "cancelled" });
+    expect(bridge.close.mock.calls).toEqual([["caller_cancelled"], ["cancelled"]]);
+  });
+});

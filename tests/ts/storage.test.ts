@@ -512,3 +512,115 @@ describe("GCS service account storage", () => {
     ).toThrow("Private export storage is not configured correctly");
   });
 });
+
+describe("listing characterization", () => {
+  const s3Pages = (...pages: string[]) => {
+    const calls: URL[] = [];
+    const fetchImpl: typeof fetch = async (input) => {
+      calls.push(new URL((input as Request).url));
+      return new Response(`<ListBucketResult>${pages[calls.length - 1] ?? ""}</ListBucketResult>`);
+    };
+    return { store: createStorage(CONFIG, fetchImpl), calls };
+  };
+  const entry = (name: string, date = "2026-11-02T12:00:00Z") =>
+    `<Contents><Key>${name}</Key><LastModified>${date}</LastModified></Contents>`;
+
+  it("yields S3 entries before rejecting a repeated continuation token", async () => {
+    const { store, calls } = s3Pages(
+      `${entry("a")}<IsTruncated>true</IsTruncated><NextContinuationToken>t</NextContinuationToken>`,
+      `${entry("b")}<IsTruncated>true</IsTruncated><NextContinuationToken>t</NextContinuationToken>`,
+    );
+    const seen: string[] = [];
+    await expect(
+      (async () => {
+        for await (const item of store.list("p/")) seen.push(item.key);
+      })(),
+    ).rejects.toThrow("Private export storage operation failed");
+    expect(seen).toEqual(["a", "b"]);
+    expect(calls.map((url) => url.searchParams.get("continuation-token"))).toEqual([null, "t"]);
+    expect(calls[0].searchParams.get("list-type")).toBe("2");
+  });
+
+  it("stops S3 listing when not truncated despite a token and accepts empty pages", async () => {
+    const { store, calls } = s3Pages(
+      `${entry("a")}<IsTruncated>false</IsTruncated><NextContinuationToken>t</NextContinuationToken>`,
+    );
+    expect((await collect(store.list("p/"))).map((item) => item.key)).toEqual(["a"]);
+    expect(calls).toHaveLength(1);
+    expect(await collect(s3Pages("").store.list("p/"))).toEqual([]);
+  });
+
+  it.each([
+    ["missing key", "<Contents><LastModified>2026-11-02T12:00:00Z</LastModified></Contents>"],
+    ["bad date", entry("a", "not a date")],
+    [
+      "empty token",
+      `<IsTruncated>true</IsTruncated><NextContinuationToken></NextContinuationToken>`,
+    ],
+  ])("rejects S3 listing with %s", async (_label, page) => {
+    await expect(collect(s3Pages(page).store.list("p/"))).rejects.toThrow(
+      "Private export storage operation failed",
+    );
+  });
+
+  const r2 = (...pages: { objects: string[]; truncated: boolean; cursor?: string }[]) => {
+    const list = vi.fn();
+    for (const page of pages)
+      list.mockResolvedValueOnce({
+        ...page,
+        objects: page.objects.map((name) => ({ key: name, uploaded: new Date(modified) })),
+      });
+    return { list, store: createR2Storage({ list } as unknown as R2BucketLike, async () => "") };
+  };
+
+  it("lists R2 without a cursor on the first page", async () => {
+    const { list, store } = r2({ objects: ["a"], truncated: false, cursor: "ignored" });
+    expect(await collect(store.list("p/"))).toEqual([
+      { key: "a", lastModified: new Date(modified) },
+    ]);
+    expect(list).toHaveBeenCalledExactlyOnceWith({ prefix: "p/" });
+  });
+
+  it.each([
+    ["missing cursor", [{ objects: ["a"], truncated: true }]],
+    [
+      "repeated cursor",
+      [
+        { objects: ["a"], truncated: true, cursor: "c" },
+        { objects: ["b"], truncated: true, cursor: "c" },
+      ],
+    ],
+  ])("yields R2 entries before rejecting a %s", async (_label, pages) => {
+    const { store } = r2(...pages);
+    const seen: string[] = [];
+    await expect(
+      (async () => {
+        for await (const item of store.list("p/")) seen.push(item.key);
+      })(),
+    ).rejects.toThrow("Private export storage operation failed");
+    expect(seen).toEqual(pages.flatMap((page) => page.objects));
+  });
+
+  it("checks the R2 caller signal before and after each page", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const { list, store } = r2({ objects: ["a"], truncated: false });
+    await expect(collect(store.list("p/", controller.signal))).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(list).not.toHaveBeenCalled();
+    const late = new AbortController();
+    const second = r2();
+    second.list.mockImplementationOnce(async () => {
+      late.abort();
+      return { objects: [{ key: "a", uploaded: new Date(modified) }], truncated: false };
+    });
+    const seen: string[] = [];
+    await expect(
+      (async () => {
+        for await (const item of second.store.list("p/", late.signal)) seen.push(item.key);
+      })(),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(seen).toEqual([]);
+  });
+});

@@ -513,9 +513,11 @@ async def test_mail_html_escaping_reproduction(odoo_harness: Any) -> None:
         ("txt", "<p>**x**</p> &\nnext", ["&lt;p&gt;**x**&lt;/p&gt; &amp;", "<br>", "next"]),
         (
             "md",
-            "# Title\n\n**bold** and *emphasis*\n\n- Item\n\n"
-            "[Link](https://example.com)\n\n> Quote\n\n```\nx < 2\n```\n\n"
-            "| A | B |\n| - | - |\n| 1 | 2 |\n\n~~old~~",
+            (
+                "# Title\n\n**bold** and *emphasis*\n\n- Item\n\n"
+                "[Link](https://example.com)\n\n> Quote\n\n```\nx < 2\n```\n\n"
+                "| A | B |\n| - | - |\n| 1 | 2 |\n\n~~old~~"
+            ),
             [
                 "<h1>Title</h1>",
                 "<strong>bold</strong>",

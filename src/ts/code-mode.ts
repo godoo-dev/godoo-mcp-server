@@ -6,7 +6,7 @@ import { deliverArtifact } from "./artifacts.js";
 import { CODE_LIMITS, CODE_RPC_LIMITS } from "./code-contract.js";
 import { createCodeGate } from "./code-policy.js";
 import { PublicError } from "./errors.js";
-import type { Registration } from "./types.js";
+import type { Registration, Runtime } from "./types.js";
 
 const examples: Record<string, string> = {
   client: 'return await client.searchRead("res.partner", [], {fields:["id","name"],limit:5});',
@@ -47,6 +47,40 @@ export function codeReference(section = "index"): unknown {
   };
 }
 
+type GateStatus = "success" | "failed" | "uncertain";
+
+function envelopeStatus(status: GateStatus, ok: boolean): GateStatus {
+  if (status === "uncertain") return status;
+  return !ok || status === "failed" ? "failed" : "success";
+}
+
+// The host ledger is always inline. Only the completed program value is routed.
+async function routeResult(
+  envelope: Record<string, unknown>,
+  status: GateStatus,
+  result: unknown,
+  bound: number | null,
+  runtime: Runtime,
+): Promise<Record<string, unknown>> {
+  let error = "result_serialization_failed";
+  try {
+    const content = new TextEncoder().encode(JSON.stringify(result ?? null));
+    if (bound === null || content.byteLength <= bound)
+      return { ...envelope, result: result ?? null };
+    error = "result_delivery_failed";
+    return {
+      ...envelope,
+      result: await deliverArtifact(content, { source: { tool: "code_execute" } }, runtime),
+    };
+  } catch {
+    return {
+      ...envelope,
+      status: status === "uncertain" ? status : "failed",
+      error,
+    };
+  }
+}
+
 export function registerCodeMode({ register }: Registration): void {
   register("code_reference", { section: z.string().max(160).default("index") }, async () => "");
   register(
@@ -83,41 +117,20 @@ export function registerCodeMode({ register }: Registration): void {
       );
       const status = gate.status();
       const envelope: Record<string, unknown> = {
-        status:
-          status === "uncertain"
-            ? status
-            : !executed.ok || status === "failed"
-              ? "failed"
-              : "success",
+        status: envelopeStatus(status, executed.ok),
         ...(executed.error ? { error: executed.error } : {}),
         ledger: gate.snapshot(),
         logs: executed.logs,
         elapsed_ms: executed.elapsed_ms,
       };
       if (!executed.ok) return envelope;
-      // The host ledger is always inline. Only the completed program value is routed.
-      let error = "result_serialization_failed";
-      try {
-        const content = new TextEncoder().encode(JSON.stringify(executed.result ?? null));
-        const bound = args.max_return_bytes as number | null;
-        if (bound === null || content.byteLength <= bound)
-          return { ...envelope, result: executed.result ?? null };
-        error = "result_delivery_failed";
-        return {
-          ...envelope,
-          result: await deliverArtifact(
-            content,
-            { source: { tool: "code_execute" } },
-            operation.runtime,
-          ),
-        };
-      } catch {
-        return {
-          ...envelope,
-          status: status === "uncertain" ? status : "failed",
-          error,
-        };
-      }
+      return routeResult(
+        envelope,
+        status,
+        executed.result,
+        args.max_return_bytes as number | null,
+        operation.runtime,
+      );
     },
   );
 }

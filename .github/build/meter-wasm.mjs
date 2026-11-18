@@ -83,6 +83,29 @@ async function prepare() {
       binaryen.getExpressionType(body),
     );
   }
+  function chargeSize(size) {
+    return module.call("__godoo_charge_bytes", [size], binaryen.i32);
+  }
+  function visitChildren(info, fields) {
+    for (const field of fields) {
+      const value = info[field];
+      if (Array.isArray(value)) for (const child of value) visit(child);
+      else if (typeof value === "number") visit(value);
+      else if (value) throw new Error("Unexpected WASM child expression");
+    }
+  }
+  function meter(id, expression, info) {
+    if (id === binaryen.LoopId) {
+      binaryen.Loop.setBody(expression, charge(info.body));
+      loops += 1;
+    }
+    if (id === binaryen.MemoryCopyId)
+      binaryen.MemoryCopy.setSize(expression, chargeSize(info.size));
+    if (id === binaryen.MemoryFillId)
+      binaryen.MemoryFill.setSize(expression, chargeSize(info.size));
+    if (id === binaryen.MemoryInitId)
+      binaryen.MemoryInit.setSize(expression, chargeSize(info.size));
+  }
   function visit(expression) {
     if (!expression || seen.has(expression)) return;
     seen.add(expression);
@@ -91,31 +114,8 @@ async function prepare() {
     if (!fields) throw new Error(`Unqualified WASM expression ${id}`);
     if (fields.length === 0) return;
     const info = binaryen.getExpressionInfo(expression);
-    for (const field of fields) {
-      const value = info[field];
-      if (Array.isArray(value)) for (const child of value) visit(child);
-      else if (typeof value === "number") visit(value);
-      else if (value) throw new Error("Unexpected WASM child expression");
-    }
-    if (id === binaryen.LoopId) {
-      binaryen.Loop.setBody(expression, charge(info.body));
-      loops += 1;
-    }
-    if (id === binaryen.MemoryCopyId)
-      binaryen.MemoryCopy.setSize(
-        expression,
-        module.call("__godoo_charge_bytes", [info.size], binaryen.i32),
-      );
-    if (id === binaryen.MemoryFillId)
-      binaryen.MemoryFill.setSize(
-        expression,
-        module.call("__godoo_charge_bytes", [info.size], binaryen.i32),
-      );
-    if (id === binaryen.MemoryInitId)
-      binaryen.MemoryInit.setSize(
-        expression,
-        module.call("__godoo_charge_bytes", [info.size], binaryen.i32),
-      );
+    visitChildren(info, fields);
+    meter(id, expression, info);
   }
   try {
     const count = module.getNumFunctions();

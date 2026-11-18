@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -55,6 +56,11 @@ async def observe(harness: Any, major: int) -> None:
     }
     destination = os.environ.get("MCP_ODOO_FACTS")
     if destination:
-        with Path(destination).open("a") as stream:
-            stream.write(json.dumps(record) + "\n")
+        await asyncio.to_thread(append_json_line, Path(destination), record)
     print("ODOO_PROOF", json.dumps(record), flush=True)
+
+
+def append_json_line(path: Path, record: dict[str, Any]) -> None:
+    """Append one JSON evidence record; run off the event loop via asyncio.to_thread."""
+    with path.open("a") as stream:
+        stream.write(json.dumps(record) + "\n")

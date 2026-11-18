@@ -58,10 +58,7 @@ function validResult(value: unknown): value is ExecutionResult {
     Number(value.wasm_bytes) > CODE_LIMITS.wasm_bytes
   )
     return false;
-  if (
-    value.error !== undefined &&
-    (typeof value.error !== "string" || !/^[a-z_]{1,64}$/.test(value.error))
-  )
+  if (value.error !== undefined && (typeof value.error !== "string" || !CATEGORY.test(value.error)))
     return false;
   try {
     const encoded = JSON.stringify(value.result ?? null);
@@ -93,6 +90,64 @@ function attachReply(pending: Promise<string>, reply: Reply): void {
       },
     )
     .catch(() => undefined);
+}
+
+const CATEGORY = /^[a-z_]{1,64}$/;
+const MESSAGE_KINDS = ["rpc", "close", "result"] as const;
+function messageKind(message: unknown): (typeof MESSAGE_KINDS)[number] | undefined {
+  if (!record(message)) return undefined;
+  return MESSAGE_KINDS.find((kind) => kind === message.kind);
+}
+function validRpc(
+  message: Record<string, unknown>,
+  lastRpc: number,
+): message is {
+  kind: "rpc";
+  id: number;
+  encoded: string;
+} {
+  return (
+    exactKeys(message, ["kind", "id", "encoded"]) &&
+    message.id === lastRpc + 1 &&
+    lastRpc < CODE_RPC_LIMITS.attempts &&
+    boundedString(message.encoded, CODE_RPC_LIMITS.argumentBytes)
+  );
+}
+function validClose(message: Record<string, unknown>): message is { reason: string } {
+  return (
+    exactKeys(message, ["kind", "reason"]) &&
+    typeof message.reason === "string" &&
+    CATEGORY.test(message.reason)
+  );
+}
+function validResultMessage(
+  message: Record<string, unknown>,
+): message is { result: ExecutionResult } {
+  return exactKeys(message, ["kind", "result"]) && validResult(message.result);
+}
+function checkAdmission(code: string, uid: number, port: CodePort): void {
+  if (!boundedString(code, CODE_LIMITS.source_bytes) || !Number.isSafeInteger(uid) || uid <= 0)
+    throw new Error("source_limit");
+  if (port.signal.aborted) throw new Error("cancelled");
+  if (admitted >= CODE_LIMITS.concurrent_executions) throw new Error("sandbox_busy");
+  if (typeof Worker.prototype.cpuUsage !== "function") throw new Error("sandbox_unavailable");
+}
+function errorCategory(error: unknown): string {
+  return error instanceof Error && CATEGORY.test(error.message)
+    ? error.message
+    : "sandbox_setup_failed";
+}
+/** Terminate a worker, keeping its error listener until termination; false if termination failed. */
+async function terminate(worker: Worker): Promise<boolean> {
+  // An already queued OOM error must not become an unhandled parent-thread EventEmitter error.
+  try {
+    await worker.terminate();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    worker.removeAllListeners();
+  }
 }
 
 /** Execute untrusted programs on fresh Node threads; credentials and policy stay on this thread. */
@@ -127,11 +182,7 @@ export function createNodeCodeExecutor(
       port.close(reason);
     };
     try {
-      if (!boundedString(code, CODE_LIMITS.source_bytes) || !Number.isSafeInteger(uid) || uid <= 0)
-        throw new Error("source_limit");
-      if (port.signal.aborted) throw new Error("cancelled");
-      if (admitted >= CODE_LIMITS.concurrent_executions) throw new Error("sandbox_busy");
-      if (typeof Worker.prototype.cpuUsage !== "function") throw new Error("sandbox_unavailable");
+      checkAdmission(code, uid, port);
       admitted += 1;
       held = true;
       worker = new Worker(workerUrl, {
@@ -161,48 +212,39 @@ export function createNodeCodeExecutor(
         port.signal.addEventListener("abort", onAbort, { once: true });
         if (port.signal.aborted) onAbort();
         timer = setTimeout(() => finish(failed("deadline")), CODE_LIMITS.deadline_ms);
+        const onRpc = (message: Record<string, unknown>) => {
+          if (closed || !validRpc(message, lastRpc)) return invalid();
+          lastRpc += 1;
+          const reply: Reply = { worker: isolate, id: lastRpc, fail: invalid };
+          replies.add(reply);
+          let pending: Promise<string>;
+          try {
+            pending = port.dispatch(message.encoded);
+          } catch {
+            return invalid();
+          }
+          attachReply(pending, reply);
+        };
+        const onClose = (message: Record<string, unknown>) => {
+          if (closed || !validClose(message)) return invalid();
+          // The engine has stopped guest execution. Preserve its final ledger before it tears down.
+          // close() can abort the gate signal; this is not a caller cancellation.
+          try {
+            close(message.reason);
+          } catch {
+            invalid();
+          }
+        };
+        const onResult = (message: Record<string, unknown>) => {
+          if (!closed || !validResultMessage(message)) return invalid();
+          finish(message.result);
+        };
+        const handlers = { rpc: onRpc, close: onClose, result: onResult };
         isolate.on("message", (message: unknown) => {
           if (settled) return;
-          if (!record(message)) return invalid();
-          if (message.kind === "rpc") {
-            if (
-              closed ||
-              !exactKeys(message, ["kind", "id", "encoded"]) ||
-              message.id !== lastRpc + 1 ||
-              lastRpc >= CODE_RPC_LIMITS.attempts ||
-              !boundedString(message.encoded, CODE_RPC_LIMITS.argumentBytes)
-            )
-              return invalid();
-            lastRpc += 1;
-            const reply: Reply = { worker: isolate, id: lastRpc, fail: invalid };
-            replies.add(reply);
-            let pending: Promise<string>;
-            try {
-              pending = port.dispatch(message.encoded);
-            } catch {
-              return invalid();
-            }
-            attachReply(pending, reply);
-          } else if (message.kind === "close") {
-            if (
-              closed ||
-              !exactKeys(message, ["kind", "reason"]) ||
-              typeof message.reason !== "string" ||
-              !/^[a-z_]{1,64}$/.test(message.reason)
-            )
-              return invalid();
-            // The engine has stopped guest execution. Preserve its final ledger before it tears down.
-            // close() can abort the gate signal; this is not a caller cancellation.
-            try {
-              close(message.reason);
-            } catch {
-              invalid();
-            }
-          } else if (message.kind === "result") {
-            if (!closed || !exactKeys(message, ["kind", "result"]) || !validResult(message.result))
-              return invalid();
-            finish(message.result);
-          } else invalid();
+          const kind = messageKind(message);
+          if (!kind) return invalid();
+          handlers[kind](message as Record<string, unknown>);
         });
         isolate.on("error", () => finish(failed("sandbox_crashed")));
         isolate.on("exit", () => {
@@ -230,10 +272,7 @@ export function createNodeCodeExecutor(
         });
       });
     } catch (error) {
-      const category =
-        error instanceof Error && /^[a-z_]{1,64}$/.test(error.message)
-          ? error.message
-          : "sandbox_setup_failed";
+      const category = errorCategory(error);
       result = failed(category);
       try {
         close(category);
@@ -244,17 +283,7 @@ export function createNodeCodeExecutor(
       if (timer) clearTimeout(timer);
       if (sampler) clearInterval(sampler);
       replies.clear();
-      if (worker) {
-        // Keep the error listener until termination: an already queued OOM error
-        // must not become an unhandled parent-thread EventEmitter error.
-        try {
-          await worker.terminate();
-        } catch {
-          result = failed("sandbox_shutdown_failed");
-        } finally {
-          worker.removeAllListeners();
-        }
-      }
+      if (worker && !(await terminate(worker))) result = failed("sandbox_shutdown_failed");
       if (held) admitted -= 1;
     }
     return { ...result, elapsed_ms: Date.now() - started };

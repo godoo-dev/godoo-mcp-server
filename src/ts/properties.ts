@@ -68,64 +68,81 @@ interface Definition {
   options: Map<string, { id: string; label: string }>;
 }
 
+type Options = Definition["options"];
+const choiceKind = (kind: string): kind is "selection" | "tags" =>
+  kind === "selection" || kind === "tags";
+const multiKind = (kind: string): boolean => ["tags", "many2many"].includes(kind);
+
+function validOption(
+  item: unknown,
+  tags: boolean,
+  optionIds: Set<string>,
+): item is [string, string, ...unknown[]] {
+  return (
+    Array.isArray(item) &&
+    item.length === (tags ? 3 : 2) &&
+    nonempty(item[0]) &&
+    typeof item[1] === "string" &&
+    !optionIds.has(item[0]) &&
+    (!tags || Number.isInteger(item[2]))
+  );
+}
+
+function optionsFor(definition: PropertyObject & { type: string }): Options {
+  const options: Options = new Map();
+  if (!choiceKind(definition.type)) return options;
+  const entries = definition[definition.type] ?? [];
+  if (!Array.isArray(entries)) changed();
+  const optionIds = new Set<string>();
+  for (const item of entries) {
+    if (!validOption(item, definition.type === "tags", optionIds)) changed();
+    optionIds.add(item[0]);
+    const name = alias(item[1]);
+    if (!name || options.has(name))
+      invalid(
+        "Option labels produce empty or duplicate friendly names; rename the choices in Odoo and rediscover properties.",
+      );
+    options.set(name, { id: item[0], label: item[1] });
+  }
+  return options;
+}
+
 class Names {
   readonly definitions = new Map<string, Definition>();
   readonly separators = new Set<string>();
   constructor(raw: PropertyObject[]) {
     const ids = new Set<string>();
-    for (const definition of raw) {
-      if (
-        !nonempty(definition.name) ||
-        typeof definition.string !== "string" ||
-        !nonempty(definition.type) ||
-        ids.has(definition.name)
-      )
-        changed();
-      ids.add(definition.name);
-      if (definition.type === "separator") {
-        this.separators.add(definition.name);
-        continue;
-      }
-      const name = alias(definition.string);
-      if (!name || this.definitions.has(name))
-        invalid(
-          "Property labels produce empty or duplicate friendly names; rename the labels in Odoo and rediscover properties.",
-        );
-      const options = new Map<string, { id: string; label: string }>();
-      if (definition.type === "selection" || definition.type === "tags") {
-        const entries = definition[definition.type] ?? [];
-        if (!Array.isArray(entries)) changed();
-        const optionIds = new Set<string>();
-        for (const item of entries) {
-          if (
-            !Array.isArray(item) ||
-            item.length !== (definition.type === "tags" ? 3 : 2) ||
-            !nonempty(item[0]) ||
-            typeof item[1] !== "string" ||
-            optionIds.has(item[0]) ||
-            (definition.type === "tags" && !Number.isInteger(item[2]))
-          )
-            changed();
-          optionIds.add(item[0]);
-          const name = alias(item[1]);
-          if (!name || options.has(name))
-            invalid(
-              "Option labels produce empty or duplicate friendly names; rename the choices in Odoo and rediscover properties.",
-            );
-          options.set(name, { id: item[0], label: item[1] });
-        }
-      }
-      if (definition.comodel && typeof definition.comodel !== "string") changed();
-      if (["many2one", "many2many"].includes(definition.type) && !nonempty(definition.comodel))
-        changed();
-      this.definitions.set(name, {
-        id: definition.name,
-        label: definition.string,
-        kind: definition.type,
-        ...(nonempty(definition.comodel) ? { comodel: definition.comodel } : {}),
-        options,
-      });
+    for (const definition of raw) this.add(definition, ids);
+  }
+  private add(definition: PropertyObject, ids: Set<string>): void {
+    if (
+      !nonempty(definition.name) ||
+      typeof definition.string !== "string" ||
+      !nonempty(definition.type) ||
+      ids.has(definition.name)
+    )
+      changed();
+    ids.add(definition.name);
+    if (definition.type === "separator") {
+      this.separators.add(definition.name);
+      return;
     }
+    const name = alias(definition.string);
+    if (!name || this.definitions.has(name))
+      invalid(
+        "Property labels produce empty or duplicate friendly names; rename the labels in Odoo and rediscover properties.",
+      );
+    const options = optionsFor(definition as PropertyObject & { type: string });
+    if (definition.comodel && typeof definition.comodel !== "string") changed();
+    if (["many2one", "many2many"].includes(definition.type) && !nonempty(definition.comodel))
+      changed();
+    this.definitions.set(name, {
+      id: definition.name,
+      label: definition.string,
+      kind: definition.type,
+      ...(nonempty(definition.comodel) ? { comodel: definition.comodel } : {}),
+      options,
+    });
   }
   definition(name: string): Definition {
     const definition = this.definitions.get(name);
@@ -171,20 +188,22 @@ class Names {
     if (!kinds.has(definition.kind)) changed();
     if (value === null && definition.kind === "boolean") return false;
     if (value === null || (value === false && definition.kind !== "boolean"))
-      return ["tags", "many2many"].includes(definition.kind) ? [] : null;
-    if (definition.kind === "selection" || definition.kind === "tags") {
-      const reverse = new Map([...definition.options].map(([name, option]) => [option.id, name]));
-      const values = definition.kind === "tags" ? value : [value];
-      if (
-        !Array.isArray(values) ||
-        values.some((entry) => typeof entry !== "string" || !reverse.has(entry))
-      )
-        changed();
-      const decoded = values.map((entry) => reverse.get(entry));
-      return definition.kind === "tags" ? decoded : decoded[0];
-    }
+      return multiKind(definition.kind) ? [] : null;
+    if (choiceKind(definition.kind)) return decodeChoices(definition, value);
     return scalar(definition, value, true);
   }
+}
+
+function decodeChoices(definition: Definition, value: unknown): unknown {
+  const reverse = new Map([...definition.options].map(([name, option]) => [option.id, name]));
+  const values = definition.kind === "tags" ? value : [value];
+  if (
+    !Array.isArray(values) ||
+    values.some((entry) => typeof entry !== "string" || !reverse.has(entry))
+  )
+    changed();
+  const decoded = values.map((entry) => reverse.get(entry));
+  return definition.kind === "tags" ? decoded : decoded[0];
 }
 
 function validCalendarDate(value: string): boolean {
@@ -237,52 +256,50 @@ function validDate(value: string, datetime = false): boolean {
   );
 }
 
+/** Odoo reads relations as [id, display name]; writes accept only the bare ID. */
+function relationValue(value: unknown, reading: boolean): unknown {
+  return reading &&
+    Array.isArray(value) &&
+    value.length === 2 &&
+    (typeof value[1] === "string" || value[1] === null || value[1] === false)
+    ? value[0]
+    : value;
+}
+
+/** Scalar converters return undefined for values invalid for their kind. */
+const scalars = new Map<string, (value: unknown, reading: boolean) => unknown>([
+  ["char", (value) => (typeof value === "string" ? value : undefined)],
+  [
+    "integer",
+    (value) => (typeof value === "number" && Number.isSafeInteger(value) ? value : undefined),
+  ],
+  ["float", (value) => (typeof value === "number" && Number.isFinite(value) ? value : undefined)],
+  ["boolean", (value) => (typeof value === "boolean" ? value : undefined)],
+  ["date", (value) => (typeof value === "string" && validDate(value) ? value : undefined)],
+  [
+    "datetime",
+    (value) => (typeof value === "string" && validDate(value, true) ? value : undefined),
+  ],
+  [
+    "many2one",
+    (value, reading) => {
+      const id = relationValue(value, reading);
+      return positiveId(id) ? id : undefined;
+    },
+  ],
+  [
+    "many2many",
+    (value, reading) => {
+      if (!Array.isArray(value)) return undefined;
+      const ids = value.map((item) => relationValue(item, reading));
+      return ids.every(positiveId) ? ids : undefined;
+    },
+  ],
+]);
+
 function scalar(definition: Definition, value: unknown, reading: boolean): unknown {
-  switch (definition.kind) {
-    case "char":
-      if (typeof value === "string") return value;
-      break;
-    case "integer":
-      if (typeof value === "number" && Number.isSafeInteger(value)) return value;
-      break;
-    case "float":
-      if (typeof value === "number" && Number.isFinite(value)) return value;
-      break;
-    case "boolean":
-      if (typeof value === "boolean") return value;
-      break;
-    case "date":
-    case "datetime":
-      if (typeof value === "string" && validDate(value, definition.kind === "datetime"))
-        return value;
-      break;
-    case "many2one": {
-      const id =
-        reading &&
-        Array.isArray(value) &&
-        value.length === 2 &&
-        (typeof value[1] === "string" || value[1] === null || value[1] === false)
-          ? value[0]
-          : value;
-      if (positiveId(id)) return id;
-      break;
-    }
-    case "many2many": {
-      if (Array.isArray(value)) {
-        const ids = value.map((item) =>
-          reading &&
-          Array.isArray(item) &&
-          item.length === 2 &&
-          (typeof item[1] === "string" || item[1] === null || item[1] === false)
-            ? item[0]
-            : item,
-        );
-        if (ids.every(positiveId)) return ids;
-      }
-      break;
-    }
-  }
-  return changed();
+  const result = scalars.get(definition.kind)?.(value, reading);
+  return result === undefined ? changed() : result;
 }
 
 async function metadata(client: OdooClient, model: string): Promise<PropertyObject> {
@@ -345,20 +362,22 @@ async function namesFor(
   const scope = await createPropertiesScope(scopeClient, model, container, { parentId, context });
   return new Names(scope.describe().definitions);
 }
-function validateCurrent(names: Names, raw: unknown): PropertyObject {
-  if (raw === null || raw === false) raw = [];
-  if (!Array.isArray(raw)) changed();
+/** Current non-separator entries by definition ID. */
+function currentEntries(names: Names, raw: unknown): Map<string, PropertyObject> {
+  const items = raw === null || raw === false ? [] : raw;
+  if (!Array.isArray(items)) changed();
   const entries = new Map<string, PropertyObject>();
   const seen = new Set<string>();
-  for (const item of raw) {
+  for (const item of items) {
     if (!object(item) || !nonempty(item.name) || seen.has(item.name)) changed();
     seen.add(item.name);
-    if (item.type === "separator") {
-      if (!names.separators.has(item.name)) changed();
-      continue;
-    }
-    entries.set(item.name, item);
+    if (item.type !== "separator") entries.set(item.name, item);
+    else if (!names.separators.has(item.name)) changed();
   }
+  return entries;
+}
+function validateCurrent(names: Names, raw: unknown): PropertyObject {
+  const entries = currentEntries(names, raw);
   const result: PropertyObject = {};
   for (const [name, definition] of names.definitions) {
     const item = entries.get(definition.id);
@@ -449,42 +468,46 @@ export async function readProperties(
   if (!ids.length) return [];
   return checked(async () => {
     const metadataValue = await metadata(client, model);
-    if (
-      ordinary.some(
-        (field) => object(metadataValue[field]) && metadataValue[field].type === "properties",
-      )
-    )
+    if (ordinary.some((field) => isContainer(metadataValue, field)))
       invalid("Use friendly properties paths for containers in a friendly read.");
     const result = new Map<number, PropertyObject>();
     for (const [container, selected] of requested) {
       const info = containerInfo(metadataValue, container);
       for (const id of ids) {
-        const { names, values, row } = await recordContainer(
-          client,
-          model,
-          id,
-          container,
-          info,
-          ordinary,
-        );
-        for (const name of selected) if (name !== undefined) names.definition(name);
-        const projected = Object.fromEntries(
-          Object.entries(values).filter(
-            ([name]) => selected.includes(undefined) || selected.includes(name),
-          ),
-        );
-        const entry =
-          result.get(id) ??
-          Object.fromEntries(
-            ["id", ...ordinary].map((field) => [field, structuredClone(row[field])]),
-          );
-        if (!object(entry.properties)) entry.properties = {};
-        (entry.properties as PropertyObject)[container] = projected;
+        const current = await recordContainer(client, model, id, container, info, ordinary);
+        const projected = selectedValues(current, selected);
+        const entry = result.get(id) ?? ordinaryEntry(current.row, ordinary);
+        setContainer(entry, container, projected);
         result.set(id, entry);
       }
     }
     return ids.map((id) => result.get(id) as PropertyObject);
   });
+}
+function isContainer(fields: PropertyObject, field: string): boolean {
+  const info = fields[field];
+  return object(info) && info.type === "properties";
+}
+function ordinaryEntry(row: PropertyObject, ordinary: string[]): PropertyObject {
+  return Object.fromEntries(
+    ["id", ...ordinary].map((field) => [field, structuredClone(row[field])]),
+  );
+}
+/** Validates the requested names, then projects the container's current values. */
+function selectedValues(
+  { names, values }: { names: Names; values: PropertyObject },
+  selected: Array<string | undefined>,
+): PropertyObject {
+  for (const name of selected) if (name !== undefined) names.definition(name);
+  return Object.fromEntries(
+    Object.entries(values).filter(
+      ([name]) => selected.includes(undefined) || selected.includes(name),
+    ),
+  );
+}
+function setContainer(entry: PropertyObject, container: string, projected: PropertyObject): void {
+  if (!object(entry.properties)) entry.properties = {};
+  (entry.properties as PropertyObject)[container] = projected;
 }
 
 function patches(

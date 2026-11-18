@@ -71,6 +71,50 @@ function safeError(
   return new PublicError("Odoo request failed", "odoo_error");
 }
 
+function concat(chunks: readonly Uint8Array[], size: number): Uint8Array<ArrayBuffer> {
+  const content = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    content.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return content;
+}
+
+/** Buffer a Code Mode upstream reply under the host bound before the SDK parses it. */
+async function boundedResponse(
+  response: Response,
+  body: ReadableStream<Uint8Array>,
+  transport: AbortController,
+): Promise<Response> {
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      size += chunk.value.byteLength;
+      // Bound the host before the SDK parses arbitrary upstream JSON.
+      if (size > 2 * 1024 * 1024) throw new Error("RPC response limit");
+      chunks.push(chunk.value);
+    }
+  } catch (error) {
+    transport.abort();
+    await reader.cancel().catch(() => undefined);
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+  const content = concat(chunks, size);
+  if (!codeJsonDepth(new TextDecoder().decode(content))) throw new Error("RPC JSON depth limit");
+  return new Response(content, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 export async function withOperation<T>(
   request: Request,
   runtime: Runtime,
@@ -92,38 +136,7 @@ export async function withOperation<T>(
         signal: AbortSignal.any([signal, transport.signal]),
       });
       if (!ledgerResult || !response.body) return response;
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      try {
-        for (;;) {
-          const chunk = await reader.read();
-          if (chunk.done) break;
-          size += chunk.value.byteLength;
-          // Bound the host before the SDK parses arbitrary upstream JSON.
-          if (size > 2 * 1024 * 1024) throw new Error("RPC response limit");
-          chunks.push(chunk.value);
-        }
-      } catch (error) {
-        transport.abort();
-        await reader.cancel().catch(() => undefined);
-        throw error;
-      } finally {
-        reader.releaseLock();
-      }
-      const content = new Uint8Array(size);
-      let offset = 0;
-      for (const chunk of chunks) {
-        content.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-      if (!codeJsonDepth(new TextDecoder().decode(content)))
-        throw new Error("RPC JSON depth limit");
-      return new Response(content, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-      });
+      return await boundedResponse(response, response.body, transport);
     } catch (error) {
       state.network = true;
       throw error;
@@ -161,6 +174,105 @@ function result(value: unknown) {
     ],
     structuredContent,
   };
+}
+
+function validateToolArguments(name: string, args: ToolArguments): void {
+  if (name === "model_call") validateModelCallArguments(args);
+}
+
+function requireToolValue(value: unknown): void {
+  if (value === undefined)
+    throw new PublicError("Unknown guidance path; use a path listed in the guidance index");
+}
+
+function isLocalTool(name: string): boolean {
+  return name === "guidance_get" || name === "code_reference";
+}
+
+function localToolValue(name: string, args: ToolArguments): unknown {
+  return name === "code_reference"
+    ? codeReference(String(args.section || "index"))
+    : guidance.get(String(args.path || "SKILL.md"));
+}
+
+function toolCategory(name: string, value: unknown): string {
+  if (name !== "code_execute" || !value || typeof value !== "object" || !("status" in value))
+    return "success";
+  if (value.status === "uncertain") return "unknown_write";
+  return value.status === "failed" ? "code_failed" : "success";
+}
+
+function toolOutcome(category: string): string {
+  if (category === "success") return "success";
+  return category === "unknown_write" ? "uncertain" : "error";
+}
+
+function publicToolError(error: unknown): PublicError {
+  return error instanceof PublicError
+    ? error
+    : new PublicError("Tool operation failed", "internal_error");
+}
+
+const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function requestIdFor(supplied: string): string {
+  return requestIdPattern.test(supplied) ? supplied.toLowerCase() : crypto.randomUUID();
+}
+
+/** Read a Code Mode request body, or undefined when it exceeds the pre-parse bound. */
+async function readCodeBody(
+  stream: ReadableStream<Uint8Array>,
+): Promise<Uint8Array<ArrayBuffer> | undefined> {
+  const reader = stream.getReader();
+  const parts: Uint8Array[] = [];
+  let length = 0;
+  try {
+    for (;;) {
+      const part = await reader.read();
+      if (part.done) break;
+      length += part.value.byteLength;
+      if (length > 512 * 1024) {
+        await reader.cancel();
+        break;
+      }
+      parts.push(part.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  if (length > 512 * 1024) return undefined;
+  return concat(parts, length);
+}
+
+/** Stamp the request ID and stop the exchange's upstream RPCs if the response stream is cancelled. */
+function relay(response: Response, requestId: string, exchange: AbortController): Response {
+  const responseHeaders = new Headers(response.headers);
+  responseHeaders.set("x-request-id", requestId);
+  const reader = response.body?.getReader();
+  const body = reader
+    ? new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          try {
+            const chunk = await reader.read();
+            if (chunk.done) controller.close();
+            else controller.enqueue(chunk.value);
+          } catch (error) {
+            controller.error(error);
+          }
+        },
+        async cancel(reason) {
+          // Workers can cancel the response stream without aborting the
+          // incoming Request. Stop the same operation's upstream RPCs.
+          exchange.abort(reason);
+          await reader.cancel(reason).catch(() => undefined);
+        },
+      })
+    : null;
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: responseHeaders,
+  });
 }
 
 export function createHandler(runtime: Runtime) {
@@ -217,42 +329,21 @@ export function createHandler(runtime: Runtime) {
             runtime.log?.({ event: "tool_call_started", request_id, tool: name });
             let category = "success";
             try {
-              if (name === "model_call") validateModelCallArguments(args as ToolArguments);
-              const value =
-                name === "guidance_get" || name === "code_reference"
-                  ? name === "code_reference"
-                    ? codeReference(String((args as ToolArguments).section || "index"))
-                    : guidance.get(String((args as ToolArguments).path || "SKILL.md"))
-                  : await withOperation(
-                      request,
-                      runtime,
-                      credentials,
-                      (operation) => callback(args as ToolArguments, operation),
-                      name === "code_execute",
-                    );
-              if (value === undefined)
-                throw new PublicError(
-                  "Unknown guidance path; use a path listed in the guidance index",
-                );
-              if (
-                name === "code_execute" &&
-                value &&
-                typeof value === "object" &&
-                "status" in value
-              ) {
-                category =
-                  value.status === "uncertain"
-                    ? "unknown_write"
-                    : value.status === "failed"
-                      ? "code_failed"
-                      : "success";
-              }
+              validateToolArguments(name, args as ToolArguments);
+              const value = isLocalTool(name)
+                ? localToolValue(name, args as ToolArguments)
+                : await withOperation(
+                    request,
+                    runtime,
+                    credentials,
+                    (operation) => callback(args as ToolArguments, operation),
+                    name === "code_execute",
+                  );
+              requireToolValue(value);
+              category = toolCategory(name, value);
               return result(value);
             } catch (error) {
-              const safe =
-                error instanceof PublicError
-                  ? error
-                  : new PublicError("Tool operation failed", "internal_error");
+              const safe = publicToolError(error);
               category = safe.category;
               return { isError: true, content: [{ type: "text" as const, text: safe.message }] };
             } finally {
@@ -260,12 +351,7 @@ export function createHandler(runtime: Runtime) {
                 event: "tool_call_finished",
                 request_id,
                 tool: name,
-                outcome:
-                  category === "success"
-                    ? "success"
-                    : category === "unknown_write"
-                      ? "uncertain"
-                      : "error",
+                outcome: toolOutcome(category),
                 category,
                 elapsed_ms: Math.round((performance.now() - started) * 100) / 100,
               });
@@ -367,90 +453,40 @@ export function createHandler(runtime: Runtime) {
       maxRequestBodySize: 150 * 1024 * 1024,
     },
   );
+  async function route(
+    request: Request,
+    url: URL,
+    credentials: Credentials | string[],
+    headers: Headers,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    if (url.pathname === "/healthz") return Response.json({ status: "ok" });
+    if (Array.isArray(credentials))
+      return Response.json({ error: "missing_credentials", missing: credentials }, { status: 401 });
+    if (url.pathname === "/mcp/")
+      return new Response(null, { status: 307, headers: { location: "/mcp" } });
+    if (url.pathname !== "/mcp") return new Response("Not Found", { status: 404 });
+    if (request.headers.get("mcp-name") === "code_execute" && request.body) {
+      const body = await readCodeBody(request.body);
+      if (!body) return Response.json({ error: "code_request_limit" }, { status: 413 });
+      return handler.fetch(
+        new Request(request.url, { method: request.method, headers, signal, body }),
+      );
+    }
+    return handler.fetch(new Request(request, { headers, signal }));
+  }
   return {
     close: () => handler.close(),
     async fetch(request: Request): Promise<Response> {
       const url = new URL(request.url);
-      const supplied = request.headers.get("x-request-id") || "";
-      const requestId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        supplied,
-      )
-        ? supplied.toLowerCase()
-        : crypto.randomUUID();
+      const requestId = requestIdFor(request.headers.get("x-request-id") || "");
       const headers = new Headers(request.headers);
       headers.set("x-request-id", requestId);
       const exchange = new AbortController();
       const signal = AbortSignal.any([request.signal, exchange.signal]);
-      let response: Response;
       const credentials = resolveCredentials(request, runtime);
-      if (url.pathname === "/healthz") response = Response.json({ status: "ok" });
-      else if (Array.isArray(credentials))
-        response = Response.json(
-          { error: "missing_credentials", missing: credentials },
-          { status: 401 },
-        );
-      else if (url.pathname === "/mcp/")
-        response = new Response(null, { status: 307, headers: { location: "/mcp" } });
-      else if (url.pathname !== "/mcp") response = new Response("Not Found", { status: 404 });
-      else if (request.headers.get("mcp-name") === "code_execute" && request.body) {
-        const reader = request.body.getReader();
-        const parts: Uint8Array[] = [];
-        let length = 0;
-        try {
-          for (;;) {
-            const part = await reader.read();
-            if (part.done) break;
-            length += part.value.byteLength;
-            if (length > 512 * 1024) {
-              await reader.cancel();
-              break;
-            }
-            parts.push(part.value);
-          }
-        } finally {
-          reader.releaseLock();
-        }
-        if (length > 512 * 1024)
-          response = Response.json({ error: "code_request_limit" }, { status: 413 });
-        else {
-          const body = new Uint8Array(length);
-          let offset = 0;
-          for (const part of parts) {
-            body.set(part, offset);
-            offset += part.byteLength;
-          }
-          response = await handler.fetch(
-            new Request(request.url, { method: request.method, headers, signal, body }),
-          );
-        }
-      } else response = await handler.fetch(new Request(request, { headers, signal }));
-      const responseHeaders = new Headers(response.headers);
-      responseHeaders.set("x-request-id", requestId);
-      const reader = response.body?.getReader();
-      const body = reader
-        ? new ReadableStream<Uint8Array>({
-            async pull(controller) {
-              try {
-                const chunk = await reader.read();
-                if (chunk.done) controller.close();
-                else controller.enqueue(chunk.value);
-              } catch (error) {
-                controller.error(error);
-              }
-            },
-            async cancel(reason) {
-              // Workers can cancel the response stream without aborting the
-              // incoming Request. Stop the same operation's upstream RPCs.
-              exchange.abort(reason);
-              await reader.cancel(reason).catch(() => undefined);
-            },
-          })
-        : null;
-      return new Response(body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: responseHeaders,
-      });
+      const response = await route(request, url, credentials, headers, signal);
+      return relay(response, requestId, exchange);
     },
   };
 }

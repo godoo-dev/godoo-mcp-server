@@ -14,12 +14,12 @@ organization overview.
 
 ## Run from source
 
-Use Node 24+ and pnpm 11.1.3. From the checkout root:
+Use Node 24+ with corepack (`corepack pnpm` provides pnpm 11.1.3). From the checkout root:
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm build
-HOST=127.0.0.1 PORT=8000 pnpm start
+corepack pnpm install --frozen-lockfile
+corepack pnpm build
+HOST=127.0.0.1 PORT=8000 corepack pnpm start
 ```
 
 The Streamable HTTP endpoint is `/mcp`; `/healthz` is an unauthenticated health
@@ -136,7 +136,11 @@ limits and download examples.
 - [Bundled Odoo guidance](src/godoo_mcp_server/skills/SKILL.md): consumer workflows,
   also available through `guidance_get()` and `skill://odoo/SKILL.md`.
 - [Guidance provenance](src/godoo_mcp_server/skills/PROVENANCE.md): adapted sources and licensing.
-- [Changelog](CHANGELOG.md), [license](LICENSE) and [agent instructions](AGENTS.md).
+- [Maintainer skills](.agents/skills/): [verification](.agents/skills/mcp-verification/SKILL.md),
+  [consumer guidance authoring](.agents/skills/mcp-guidance-authoring/SKILL.md),
+  [knowledge placement and docs](.agents/skills/mcp-docs/SKILL.md) and
+  [work capture](.agents/skills/mcp-capture/SKILL.md). These are not served to MCP consumers.
+- [Changelog](CHANGELOG.md) and [license](LICENSE).
 
 Tool annotations are hints, not write permission. Guidance cannot override client
 policy; host/database names do not establish an environment's safety. These docs

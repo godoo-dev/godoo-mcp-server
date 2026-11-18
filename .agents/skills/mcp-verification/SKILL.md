@@ -1,120 +1,125 @@
 ---
 name: mcp-verification
-description: Verify godoo-mcp-server over real Streamable HTTP, installed npm packages and exact candidate images against selected disposable Odoo versions, or maintain those proof paths. Covers native Workers, caller permissions, credential isolation and interrupted writes; excludes hosted gateway acceptance.
+description: Check a godoo-mcp-server change with its check command and drive its real interfaces (Streamable HTTP, the installed npm package, the candidate image, native Workers and disposable Odoo 18/19). Covers which tier a change needs, cleanup and CI. Hosted gateway and client acceptance are out of scope.
 ---
 
 # Verify godoo-mcp-server
 
-Use the selected checkout's native checks. Consumer workflow guidance stays in
-`src/godoo_mcp_server/skills/` with its own manifest, provenance and license.
-Gateway identity/OAuth and deployment acceptance remain with their owners.
-Passing checks grants no publication, deployment or business-write authority.
+Machine prerequisites: Node 24 with corepack, uv, and Docker for the image and
+Odoo tiers. Everything else is a project dependency: pnpm 11.1.3 comes from
+`packageManager` through corepack, `just` from the `rust-just` devDependency,
+Ruff from the `tests/acceptance` dev group. In a fresh checkout run
+`corepack pnpm install --frozen-lockfile` once, then `corepack pnpm exec just ...`
+(or put `node_modules/.bin` on PATH). The justfile adds `node_modules/.bin` and a
+local corepack pnpm shim to PATH for its recipes. No model login or real Odoo
+credentials are needed.
 
-## Prepare and identify
-
-Read resource authority before starting Docker. Use Node24.22.2, pnpm11.1.3,
-Python3.14.7 and uv0.12.5. Production builds use `pnpm-lock.yaml`; the independent
-Python acceptance project uses `tests/acceptance/uv.lock`. No model login or real
-Odoo credentials are needed. Keep evidence/candidates outside source using
-owner-paths and use a new directory per candidate. See
-[development](../../../docs/development.md) for the source map and prerequisites.
-
-Record source SHA, dirty input identity, tool/lock versions and selected commands.
-The candidate manifest records tarball, built Worker bundle, image/archive hashes
-and proof identities. A dirty proof applies only to those exact retained inputs;
-subsequent source changes require a fresh candidate.
-
-## Choose and drive the boundary
-
-From the checkout root, substitute external paths:
+## Check command
 
 ```sh
-just validate "$evidence"
+just check "$dir"            # full check; $dir is a new, empty directory outside the checkout
 ```
 
-This runs the actual CI workflow through `act`, including setup, all stages and
-artifact upload. GitHub runs the same workflow remotely. For focused diagnosis,
-the workflow's individual stage recipes are also available:
+It runs every CI stage in order and stops at the first failure: `offline`,
+`package`, `image`, `odoo` for each major in the justfile's `odoo_majors`, and
+`archive`. Use a fresh directory per run: `package` refuses a directory that
+already holds a candidate. Its output is the result.
+
+CI runs the same stages on GitHub-hosted `ubuntu-latest`, one workflow step per
+stage, for every PR to main, pushes to main and the publish workflow. `build`
+runs offline, package and image once and passes the candidate and `dist/` on as
+a tar artifact. `odoo` runs the majors in parallel, as the owner chose to trade
+runner starts for waiting time. `validation` merges their proofs, runs `archive`
+and uploads `tested-candidate`. The stable protected check `required` fails
+unless all three succeed. When `odoo_majors` changes, change the `odoo` matrix
+in `.github/workflows/ci.yml` to match. Rely on CI on the
+PR for the full run; run `just check` yourself only when no CI run will cover it.
+
+Focused commands while iterating:
 
 ```sh
-just offline "$evidence/offline"
-just package "$evidence/candidate" local "$evidence/offline"
-just image "$evidence/candidate"
-just odoo "$evidence/candidate" 18
-just odoo "$evidence/candidate" 19
-just archive "$evidence/candidate"
+just lint                              # strict TypeScript and Biome
+just test [vitest args]                # Vitest plus candidate-control tests
+just build
+just r2                                # artifact, storage and native Worker tests
+just offline "$dir/offline"            # lint, build, all unit tests and the real-HTTP probe
 ```
 
-- `offline`: frozen install, strict TypeScript, Biome, builds, Vitest, candidate
-  rejection tests and real loopback HTTP. Native Worker tests execute the built
-  bundle in Miniflare without Node compatibility, including R2 and scheduled cleanup.
-- `package`: consume the verified build, pack once and install that npm tarball into an isolated external
-  consumer. Verify CLI/version and drive real HTTP, including bundled guidance.
-- `image`: verify unchanged source/locks/package, build the tarball into one pinned
-  non-root Node image and export its exact archive.
-- `odoo`: run the full external Python SDK/Testcontainers suite for the selected
-  observed major through source, installed package and exact image. Reject zero
-  tests, skips, failures, wrong majors and incomplete owned-resource teardown.
-- `archive`: require all configured major proofs, verify transferred hashes and
-  reload the same image archive to check its actual daemon identity.
-- `r2`: focused artifact/storage/native Worker checks, including actual downloads,
-  signed URL tamper rejection and cleanup. Live provider acceptance stays separate.
+`just lint` also runs Ruff format and lint on `tests/acceptance`.
 
-The maintained HTTP driver is `.github/testing/http-probe.mjs`; see
-[the HTTP recipe](references/http-smoke.md). It clears ambient Odoo credentials,
-starts an owned process with a readiness deadline and retains responses/logs before
-bounded exact-process teardown. Canonical POST is `/mcp`; `/mcp/` redirects.
-Health alone is not MCP readiness. No-Odoo probes establish no authenticated effects.
+Complexity blocks in `just lint`: Biome `noExcessiveCognitiveComplexity` at its
+default limit 15 for TypeScript and build scripts, Ruff `C901` at 10 for the
+acceptance suite. Refactor a new violation without changing behaviour, adding
+characterization tests where coverage is missing. What cannot be fixed safely
+goes to the owner; an approved exception is the narrowest suppression with its
+reason and "owner-approved".
 
-## Real Odoo, permissions and interrupted writes
+## Choose the tier
 
-Only use owned disposable Docker resources. `tests/acceptance/odoo_proof.py`
-queries `common.version` and records actual Odoo/Postgres/network identities;
-image tags alone are not observations. The harness installs `base,mail,project`.
-Required suites run serially and clear ambient Odoo/seed credentials.
+| Change touches | Run |
+| --- | --- |
+| Docs or maintainer skills only | Link check, `git diff --check`, `uv run --script <skill-creator>/scripts/validate.py <skill-dir> --host both` |
+| TypeScript source, tool contracts, served guidance | `just offline "$dir/offline"`; CI for the rest |
+| Packaging, `package.json` files, CLI | then `just package "$dir/candidate" local "$dir/offline"` |
+| Dockerfile, image or runtime adapters | then `just image "$dir/candidate"` and `just odoo "$dir/candidate" 18` |
+| Odoo calls, permissions, writes, guidance with Odoo effects | the stages above, then `just odoo "$dir/candidate" 18` and `19` |
 
-`test_vertical.py` covers tools, CRUD/readback, mail, attachments, admin/portal
-identities and ACL differences, safe errors and request-correlated telemetry.
-`test_property_create.py` covers friendly property creation. The separate Python
-client drives actual HTTP and imports no production MCP Python code.
+The image and Odoo tiers start Docker containers; run them when the change
+touches what they cover or the owner asks, otherwise leave them to CI. `odoo`
+and `archive` need the candidate that `package` and `image` produced in the same
+directory.
 
-The commit relay forwards real Odoo mutations and withholds only the reply.
-Drop, caller disconnect, process kill/restart and SSE keepalive cases each require
-independent readback of exactly one committed row and one forwarded write.
-Never retry a possibly committed mutation to obtain a successful reply. A killed
-process cannot emit a finished event.
+## Interfaces
 
-`MCP_SERVER_COMMAND` selects an installed Node CLI; `MCP_CANDIDATE_IMAGE` selects
-an exact prebuilt image. The native candidate command supplies expected version
-and artifact identity, checks non-root image execution and retains per-boundary
-JUnit/facts. The fixture never rebuilds or deletes a caller's image.
+- **Streamable HTTP:** `.github/testing/http-probe.mjs` starts an owned server
+  process with ambient Odoo credentials cleared, waits for readiness, drives
+  protocol, guidance and error cases and stops the process. `just offline` and
+  `just package` run it. For manual diagnosis see
+  [the HTTP recipe](references/http-smoke.md). POST goes to `/mcp`; `/mcp/`
+  redirects. Health alone is not MCP readiness.
+- **Installed package:** `just package` packs one tarball, installs it into an
+  isolated consumer outside the checkout and drives it over HTTP.
+- **Image:** `just image` builds the tarball into the pinned non-root Node image
+  without recompiling source.
+- **Odoo:** `just odoo DIR MAJOR` runs the external Python SDK and
+  Testcontainers suite in `tests/acceptance/` against source, installed package
+  and image. `test_vertical.py` covers tools, CRUD, mail, attachments,
+  admin/portal ACL differences, safe errors and telemetry;
+  `test_property_create.py` covers friendly property creation. Interrupted-write
+  cases (dropped reply, caller disconnect, process kill, SSE keepalive) check
+  that exactly one write committed; never retry a possibly committed write to get
+  a reply. Zero tests, skips or a wrong observed major fail the stage.
+- **Native Workers:** Vitest runs the built Worker bundle in Miniflare without
+  Node compatibility, including R2 and scheduled cleanup (`just r2`).
 
-After a surprising failure, preserve MCP/relay logs and recheck owned readiness
-before classifying environment, harness or product failure. Do not weaken expected
-behavior to pass. External model guidance consumption, confirmation UI, rendering
-and email delivery require separately commissioned client acceptance.
+`MCP_SERVER_COMMAND` selects an installed CLI and `MCP_CANDIDATE_IMAGE` an
+existing image for the acceptance suite; the fixture never rebuilds or deletes a
+caller's image.
 
-## CI and promotion
+## Semantic navigation
 
-`.github/workflows/ci.yml` runs every required gate on PRs targeting main, pushes
-to main and manual/reusable invocations. The stable `required` job rejects any
-validation result except success. `justfile` identifies required Odoo majors.
-Use `act` to execute the same workflow locally; no substantive step is skipped.
-Hosted permissions, branch/environment protections and registry acceptance need
-actual readback and are not established by local execution.
+`just setup-nav` installs dependencies, enables the project's Claude Code
+TypeScript LSP plugin (`.claude/settings.json`) and checks Serena for Codex
+(`.codex/config.toml`, pinned `serena-agent==2.1.0`; Codex loads it only for a
+trusted checkout). The plugin runs `typescript-language-server` from PATH, so
+start Claude Code with `corepack pnpm exec claude` to use the project's copy.
+Use navigation for definitions and references; `rg` for strings and config.
 
-`tested-candidate` retains the tarball, Worker bundle identity, image archive and
-proof manifest. Manual publication resolves a matching version tag reachable
-from main, revalidates the candidate and promotes tested bytes without rebuilding.
-`publish` defaults false. Both npm and GHCR publication need separate authority.
+## Cleanup
 
-## Cleanup and upkeep
+Fixtures create and remove their own containers, networks and processes. After
+an interrupted run, remove only the containers and processes that run started;
+never prune the shared Docker daemon or remove other tags. Delete `$dir` when
+done unless you need its logs.
 
-Fixtures stop only owned PIDs/containers/networks. After interruption use recorded
-identities, never prune the shared daemon or remove unrelated tags/worktrees.
-Confirm owned resources are gone and evidence is readable; retain failed evidence.
+## Release path
 
-For proof-path changes inspect recipes, fixtures, source and workflow callers;
-repair supported drift and re-exercise the actual native caller. For skill edits,
-run skill-creator structural validation and inspect links/discovery. Report
-exercised, skipped, unreachable and externally unverified coverage separately.
+`.github/testing/candidate.mjs` records the tarball, Worker bundle and image
+hashes of a candidate. The publish workflow uses them: it resolves a version tag
+reachable from main, reruns CI on that commit, and promotes the tested bytes from
+the `tested-candidate` artifact without rebuilding. `publish` defaults to false;
+npm and GHCR publication need the owner's authorization.
+
+For proof-path changes, inspect the recipes, fixtures and workflow callers, then
+exercise the changed stage. External model consumption of guidance, confirmation
+UI and email delivery need separately commissioned client acceptance.

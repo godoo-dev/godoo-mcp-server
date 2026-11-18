@@ -233,16 +233,7 @@ export function requireReleaseRef(ref, sha, version, root = ROOT) {
   execFileSync("git", ["merge-base", "--is-ancestor", sha, "origin/main"], { cwd: root });
 }
 
-export function verifyCandidate(directory, { root = ROOT, complete = false, releaseRef } = {}) {
-  const candidate = manifest(directory);
-  const packageMetadata = metadata(root);
-  if (
-    candidate.schema !== 2 ||
-    JSON.stringify(candidate.source) !== JSON.stringify(sourceIdentity(root))
-  )
-    throw new Error("Candidate source identity differs from checkout");
-  if (candidate.version !== packageMetadata.version || candidate.name !== packageMetadata.name)
-    throw new Error("Candidate package identity mismatch");
+function verifyPackedArtifacts(directory, candidate, root) {
   for (const [path, hash] of Object.entries(candidate.locks ?? {})) {
     if (
       !["pnpm-lock.yaml", "tests/acceptance/uv.lock"].includes(path) ||
@@ -271,48 +262,64 @@ export function verifyCandidate(directory, { root = ROOT, complete = false, rele
     )
       throw new Error("Packed runtime differs from tested bundle");
   }
-  if (complete) {
-    archiveIdentity(directory, candidate.image);
-    if (
-      !candidate.odoo_majors?.includes(18) ||
-      !candidate.odoo_majors?.includes(19) ||
-      candidate.odoo_majors.some((major) => !Number.isInteger(major) || major < 18) ||
-      new Set(candidate.odoo_majors).size !== candidate.odoo_majors.length
-    )
-      throw new Error("Missing supported Odoo qualifications");
-    for (const major of candidate.odoo_majors) {
-      const qualification = JSON.parse(readFileSync(join(directory, `odoo-${major}.json`), "utf8"));
-      if (
-        qualification.image_id !== candidate.image.id ||
-        qualification.package_sha256 !== candidate.package.sha256 ||
-        qualification.worker_sha256 !== candidate.worker.sha256
-      )
-        throw new Error("Qualification used another candidate");
-      if (
-        JSON.stringify(Object.keys(qualification.proofs ?? {}).sort()) !==
-        JSON.stringify([...SUITES].sort())
-      )
-        throw new Error("Missing runtime qualification suite");
-      for (const suite of SUITES) {
-        const proof = qualification.proofs[suite];
-        if (requireJunit(checkFile(directory, proof.report)) !== proof.tests)
-          throw new Error("Candidate test count mismatch");
-        validateFacts(checkFile(directory, proof.facts), major);
-        if (suite === "image")
-          validateImageFacts(checkFile(directory, proof.image_facts), candidate);
-      }
-    }
-    for (const proof of ["offline", "controls"])
-      requireJunit(checkFile(directory, candidate.proofs?.[proof]));
-    const offlineIdentity = JSON.parse(
-      readFileSync(checkFile(directory, candidate.proofs?.identity), "utf8"),
-    );
-    if (
-      JSON.stringify(offlineIdentity.source) !== JSON.stringify(candidate.source) ||
-      JSON.stringify(offlineIdentity.bundles) !== JSON.stringify(candidate.bundles)
-    )
-      throw new Error("Offline proof used another source or runtime bundle");
+}
+
+function verifyQualification(directory, candidate, major) {
+  const qualification = JSON.parse(readFileSync(join(directory, `odoo-${major}.json`), "utf8"));
+  if (
+    qualification.image_id !== candidate.image.id ||
+    qualification.package_sha256 !== candidate.package.sha256 ||
+    qualification.worker_sha256 !== candidate.worker.sha256
+  )
+    throw new Error("Qualification used another candidate");
+  if (
+    JSON.stringify(Object.keys(qualification.proofs ?? {}).sort()) !==
+    JSON.stringify([...SUITES].sort())
+  )
+    throw new Error("Missing runtime qualification suite");
+  for (const suite of SUITES) {
+    const proof = qualification.proofs[suite];
+    if (requireJunit(checkFile(directory, proof.report)) !== proof.tests)
+      throw new Error("Candidate test count mismatch");
+    validateFacts(checkFile(directory, proof.facts), major);
+    if (suite === "image") validateImageFacts(checkFile(directory, proof.image_facts), candidate);
   }
+}
+
+function verifyCompleteProofs(directory, candidate) {
+  archiveIdentity(directory, candidate.image);
+  if (
+    !candidate.odoo_majors?.includes(18) ||
+    !candidate.odoo_majors?.includes(19) ||
+    candidate.odoo_majors.some((major) => !Number.isInteger(major) || major < 18) ||
+    new Set(candidate.odoo_majors).size !== candidate.odoo_majors.length
+  )
+    throw new Error("Missing supported Odoo qualifications");
+  for (const major of candidate.odoo_majors) verifyQualification(directory, candidate, major);
+  for (const proof of ["offline", "controls"])
+    requireJunit(checkFile(directory, candidate.proofs?.[proof]));
+  const offlineIdentity = JSON.parse(
+    readFileSync(checkFile(directory, candidate.proofs?.identity), "utf8"),
+  );
+  if (
+    JSON.stringify(offlineIdentity.source) !== JSON.stringify(candidate.source) ||
+    JSON.stringify(offlineIdentity.bundles) !== JSON.stringify(candidate.bundles)
+  )
+    throw new Error("Offline proof used another source or runtime bundle");
+}
+
+export function verifyCandidate(directory, { root = ROOT, complete = false, releaseRef } = {}) {
+  const candidate = manifest(directory);
+  const packageMetadata = metadata(root);
+  if (
+    candidate.schema !== 2 ||
+    JSON.stringify(candidate.source) !== JSON.stringify(sourceIdentity(root))
+  )
+    throw new Error("Candidate source identity differs from checkout");
+  if (candidate.version !== packageMetadata.version || candidate.name !== packageMetadata.name)
+    throw new Error("Candidate package identity mismatch");
+  verifyPackedArtifacts(directory, candidate, root);
+  if (complete) verifyCompleteProofs(directory, candidate);
   if (releaseRef !== undefined) {
     requireReleaseRef(releaseRef, candidate.source.sha, candidate.version, root);
     if (candidate.source.dirty || candidate.source_ref !== releaseRef)
@@ -388,6 +395,36 @@ export function packCandidate(directory, sourceRef = "local", evidence) {
   const packageFile = join(directory, packed[0].filename);
   copyFileSync(join(ROOT, "dist/worker.mjs"), join(directory, "worker.mjs"));
   copyFileSync(join(ROOT, "dist/quickjs.wasm"), join(directory, "quickjs.wasm"));
+  const packageMetadata = installCandidate(directory, packageFile);
+  if (JSON.stringify(sourceIdentity()) !== JSON.stringify(source))
+    throw new Error("Source changed while building/testing candidate");
+  const candidate = {
+    schema: 2,
+    source,
+    source_ref: sourceRef,
+    name: packageMetadata.name,
+    version: packageMetadata.version,
+    locks: Object.fromEntries(
+      ["pnpm-lock.yaml", "tests/acceptance/uv.lock"].map((path) => [
+        path,
+        sha256(join(ROOT, path)),
+      ]),
+    ),
+    package: fileRecord(packageFile),
+    worker: fileRecord(join(directory, "worker.mjs")),
+    bundles: Object.fromEntries(BUNDLES.map((name) => [name, sha256(join(ROOT, "dist", name))])),
+    tools: {
+      node: process.version,
+      pnpm: output("pnpm", ["--version"]),
+      uv: output("uv", ["--version"]),
+    },
+  };
+  if (evidence) attachOfflineProofs(directory, candidate, evidence, source);
+  writeManifest(directory, candidate);
+  return verifyCandidate(directory);
+}
+
+function installCandidate(directory, packageFile) {
   const consumer = join(directory, "consumer");
   mkdirSync(consumer);
   writeFileSync(join(consumer, "package.json"), '{"private":true,"type":"module"}\n');
@@ -428,49 +465,26 @@ export function packCandidate(directory, sourceRef = "local", evidence) {
     "--evidence",
     join(directory, "http-installed"),
   ]);
-  if (JSON.stringify(sourceIdentity()) !== JSON.stringify(source))
-    throw new Error("Source changed while building/testing candidate");
-  const candidate = {
-    schema: 2,
-    source,
-    source_ref: sourceRef,
-    name: packageMetadata.name,
-    version: packageMetadata.version,
-    locks: Object.fromEntries(
-      ["pnpm-lock.yaml", "tests/acceptance/uv.lock"].map((path) => [
-        path,
-        sha256(join(ROOT, path)),
-      ]),
-    ),
-    package: fileRecord(packageFile),
-    worker: fileRecord(join(directory, "worker.mjs")),
-    bundles: Object.fromEntries(BUNDLES.map((name) => [name, sha256(join(ROOT, "dist", name))])),
-    tools: {
-      node: process.version,
-      pnpm: output("pnpm", ["--version"]),
-      uv: output("uv", ["--version"]),
-    },
-  };
-  if (evidence) {
-    candidate.proofs = {};
-    for (const name of ["offline", "controls"]) {
-      const sourceFile = join(resolve(evidence), `${name}.xml`);
-      requireJunit(sourceFile);
-      copyFileSync(sourceFile, join(directory, `${name}.xml`));
-      candidate.proofs[name] = fileRecord(join(directory, `${name}.xml`));
-    }
-    const identity = join(resolve(evidence), "offline-identity.json");
-    const observed = JSON.parse(readFileSync(identity, "utf8"));
-    if (
-      JSON.stringify(observed.source) !== JSON.stringify(source) ||
-      JSON.stringify(observed.bundles) !== JSON.stringify(candidate.bundles)
-    )
-      throw new Error("Offline proof used another source or runtime bundle");
-    copyFileSync(identity, join(directory, "offline-identity.json"));
-    candidate.proofs.identity = fileRecord(join(directory, "offline-identity.json"));
+  return packageMetadata;
+}
+
+function attachOfflineProofs(directory, candidate, evidence, source) {
+  candidate.proofs = {};
+  for (const name of ["offline", "controls"]) {
+    const sourceFile = join(resolve(evidence), `${name}.xml`);
+    requireJunit(sourceFile);
+    copyFileSync(sourceFile, join(directory, `${name}.xml`));
+    candidate.proofs[name] = fileRecord(join(directory, `${name}.xml`));
   }
-  writeManifest(directory, candidate);
-  return verifyCandidate(directory);
+  const identity = join(resolve(evidence), "offline-identity.json");
+  const observed = JSON.parse(readFileSync(identity, "utf8"));
+  if (
+    JSON.stringify(observed.source) !== JSON.stringify(source) ||
+    JSON.stringify(observed.bundles) !== JSON.stringify(candidate.bundles)
+  )
+    throw new Error("Offline proof used another source or runtime bundle");
+  copyFileSync(identity, join(directory, "offline-identity.json"));
+  candidate.proofs.identity = fileRecord(join(directory, "offline-identity.json"));
 }
 
 export function buildImage(directory, majors = [18, 19]) {
@@ -512,81 +526,85 @@ export function qualifyOdoo(directory, major) {
   verifyLoadedImage(directory, candidate);
   run("uv", ["sync", "--project", "tests/acceptance", "--frozen", "--python", "3.14.7"]);
   const proofs = {};
-  for (const suite of SUITES) {
-    if (suite !== "image") {
-      verifyRuntimeBundles(
-        suite === "source"
-          ? join(ROOT, "dist")
-          : join(directory, "consumer/node_modules/@godoo-dev/mcp-server/dist"),
-        candidate,
-      );
-    }
-    const report = join(directory, `odoo-${major}-${suite}.xml`);
-    const facts = join(directory, `odoo-${major}-${suite}-facts.jsonl`);
-    rmSync(facts, { force: true });
-    const env = {
-      ...cleanEnvironment(),
-      ODOO_VERSION: `${major}.0`,
-      MCP_TEST_ODOO_MAJOR: String(major),
-      MCP_REQUIRED_TESTS: "1",
-      MCP_EXPECTED_VERSION: candidate.version,
-      MCP_ODOO_FACTS: facts,
-    };
-    const imageFacts = join(directory, `odoo-${major}-image-runtime-facts.jsonl`);
-    if (suite === "image") {
-      rmSync(imageFacts, { force: true });
-      env.MCP_CANDIDATE_IMAGE = candidate.image.id;
-      env.MCP_IMAGE_FACTS = imageFacts;
-    } else
-      env.MCP_SERVER_COMMAND = `${quote(process.execPath)} ${quote(suite === "source" ? join(ROOT, "dist/node.mjs") : join(directory, "consumer/node_modules/@godoo-dev/mcp-server/dist/node.mjs"))}`;
-    run(
-      "uv",
-      [
-        "run",
-        "--project",
-        "tests/acceptance",
-        "--frozen",
-        "pytest",
-        "--confcutdir",
-        "tests/acceptance",
-        "tests/acceptance",
-        "--capture=tee-sys",
-        "-o",
-        "junit_logging=all",
-        `--junitxml=${report}`,
-        `--basetemp=${join(directory, `odoo-${major}-${suite}-tmp`)}`,
-      ],
-      { env },
-    );
-    const tests = requireJunit(report);
-    const observations = validateFacts(facts, major);
-    for (const row of observations) {
-      for (const [kind, id] of [
-        ...row.containers.map((container) => ["container", container.id]),
-        ["network", row.network_id],
-      ]) {
-        if (spawnSync("docker", [kind, "inspect", id], { stdio: "ignore" }).status === 0)
-          throw new Error(`Owned ${kind} remains after teardown`);
-      }
-    }
-    proofs[suite] = { report: fileRecord(report), tests, facts: fileRecord(facts) };
-    if (suite === "image") {
-      for (const observation of validateImageFacts(imageFacts, candidate)) {
-        if (
-          spawnSync("docker", ["container", "inspect", observation.container_id], {
-            stdio: "ignore",
-          }).status === 0
-        )
-          throw new Error("Owned MCP container remains after teardown");
-      }
-      proofs[suite].image_facts = fileRecord(imageFacts);
-    }
-  }
+  for (const suite of SUITES) proofs[suite] = qualifySuite(directory, candidate, major, suite);
   writeFileSync(
     join(directory, `odoo-${major}.json`),
     `${JSON.stringify({ image_id: candidate.image.id, package_sha256: candidate.package.sha256, worker_sha256: candidate.worker.sha256, proofs }, null, 2)}\n`,
   );
   return proofs;
+}
+
+function requireTornDown(row) {
+  for (const [kind, id] of [
+    ...row.containers.map((container) => ["container", container.id]),
+    ["network", row.network_id],
+  ]) {
+    if (spawnSync("docker", [kind, "inspect", id], { stdio: "ignore" }).status === 0)
+      throw new Error(`Owned ${kind} remains after teardown`);
+  }
+}
+
+function requireContainerRemoved(id) {
+  if (spawnSync("docker", ["container", "inspect", id], { stdio: "ignore" }).status === 0)
+    throw new Error("Owned MCP container remains after teardown");
+}
+
+function qualifySuite(directory, candidate, major, suite) {
+  if (suite !== "image") {
+    verifyRuntimeBundles(
+      suite === "source"
+        ? join(ROOT, "dist")
+        : join(directory, "consumer/node_modules/@godoo-dev/mcp-server/dist"),
+      candidate,
+    );
+  }
+  const report = join(directory, `odoo-${major}-${suite}.xml`);
+  const facts = join(directory, `odoo-${major}-${suite}-facts.jsonl`);
+  rmSync(facts, { force: true });
+  const env = {
+    ...cleanEnvironment(),
+    ODOO_VERSION: `${major}.0`,
+    MCP_TEST_ODOO_MAJOR: String(major),
+    MCP_REQUIRED_TESTS: "1",
+    MCP_EXPECTED_VERSION: candidate.version,
+    MCP_ODOO_FACTS: facts,
+  };
+  const imageFacts = join(directory, `odoo-${major}-image-runtime-facts.jsonl`);
+  if (suite === "image") {
+    rmSync(imageFacts, { force: true });
+    env.MCP_CANDIDATE_IMAGE = candidate.image.id;
+    env.MCP_IMAGE_FACTS = imageFacts;
+  } else
+    env.MCP_SERVER_COMMAND = `${quote(process.execPath)} ${quote(suite === "source" ? join(ROOT, "dist/node.mjs") : join(directory, "consumer/node_modules/@godoo-dev/mcp-server/dist/node.mjs"))}`;
+  run(
+    "uv",
+    [
+      "run",
+      "--project",
+      "tests/acceptance",
+      "--frozen",
+      "pytest",
+      "--confcutdir",
+      "tests/acceptance",
+      "tests/acceptance",
+      "--capture=tee-sys",
+      "-o",
+      "junit_logging=all",
+      `--junitxml=${report}`,
+      `--basetemp=${join(directory, `odoo-${major}-${suite}-tmp`)}`,
+    ],
+    { env },
+  );
+  const tests = requireJunit(report);
+  const observations = validateFacts(facts, major);
+  for (const row of observations) requireTornDown(row);
+  const proof = { report: fileRecord(report), tests, facts: fileRecord(facts) };
+  if (suite === "image") {
+    for (const observation of validateImageFacts(imageFacts, candidate))
+      requireContainerRemoved(observation.container_id);
+    proof.image_facts = fileRecord(imageFacts);
+  }
+  return proof;
 }
 
 export function verifyArchive(directory) {
@@ -603,6 +621,36 @@ async function registryJson(url, init, fetchImpl) {
   } catch {
     throw new Error("Registry response could not be verified; publication stopped");
   }
+}
+
+function npmPackageState(npm, candidate, directory) {
+  if (npm.status === 404 && npm.body.error === "Not found") return "absent";
+  if (!(npm.status === 200 && npm.body && typeof npm.body.versions === "object"))
+    throw new Error("npm registry state is unknown; publication stopped");
+  const existing = npm.body.versions[candidate.version];
+  if (!existing) return "absent";
+  const integrity = `sha512-${createHash("sha512")
+    .update(readFileSync(checkFile(directory, candidate.package)))
+    .digest("base64")}`;
+  if (
+    existing.name !== candidate.name ||
+    existing.version !== candidate.version ||
+    existing.dist?.integrity !== integrity
+  )
+    throw new Error("npm version already exists with different or unverifiable bytes");
+  return "identical";
+}
+
+function ghcrImageState(image, candidate) {
+  if (
+    image.status === 404 &&
+    image.body.errors?.length === 1 &&
+    image.body.errors[0].code === "MANIFEST_UNKNOWN"
+  )
+    return "absent";
+  if (image.status === 200 && image.body.config?.digest === candidate.image.config_id)
+    return "identical";
+  throw new Error("GHCR version exists with different bytes or registry state is unknown");
 }
 
 export async function registryPreflight(candidate, directory, options = {}) {
@@ -622,24 +670,7 @@ export async function registryPreflight(candidate, directory, options = {}) {
     {},
     fetchImpl,
   );
-  let packageState;
-  if (npm.status === 404 && npm.body.error === "Not found") packageState = "absent";
-  else if (npm.status === 200 && npm.body && typeof npm.body.versions === "object") {
-    const existing = npm.body.versions[candidate.version];
-    if (!existing) packageState = "absent";
-    else {
-      const integrity = `sha512-${createHash("sha512")
-        .update(readFileSync(checkFile(directory, candidate.package)))
-        .digest("base64")}`;
-      if (
-        existing.name !== candidate.name ||
-        existing.version !== candidate.version ||
-        existing.dist?.integrity !== integrity
-      )
-        throw new Error("npm version already exists with different or unverifiable bytes");
-      packageState = "identical";
-    }
-  } else throw new Error("npm registry state is unknown; publication stopped");
+  const packageState = npmPackageState(npm, candidate, directory);
   const query = new URLSearchParams({ service: "ghcr.io", scope: `repository:${repository}:pull` });
   const token = await registryJson(
     `https://ghcr.io/token?${query}`,
@@ -663,17 +694,7 @@ export async function registryPreflight(candidate, directory, options = {}) {
     },
     fetchImpl,
   );
-  let imageState;
-  if (
-    image.status === 404 &&
-    image.body.errors?.length === 1 &&
-    image.body.errors[0].code === "MANIFEST_UNKNOWN"
-  )
-    imageState = "absent";
-  else if (image.status === 200 && image.body.config?.digest === candidate.image.config_id)
-    imageState = "identical";
-  else throw new Error("GHCR version exists with different bytes or registry state is unknown");
-  return { package: packageState, image: imageState };
+  return { package: packageState, image: ghcrImageState(image, candidate) };
 }
 
 export async function promoteArtifacts(candidate, directory, options = {}) {
@@ -705,6 +726,56 @@ export async function promoteArtifacts(candidate, directory, options = {}) {
   return states;
 }
 
+function verifyCommand(directory, values) {
+  const candidate = verifyCandidate(directory, {
+    complete: values.complete,
+    releaseRef: values["release-ref"],
+  });
+  if (values["loaded-image"]) verifyLoadedImage(directory, candidate);
+  console.log(JSON.stringify(candidate, null, 2));
+}
+
+function resolveRelease() {
+  if (
+    process.env.DISPATCH_REF !== "refs/heads/main" ||
+    !/^v\d+\.\d+\.\d+(?:[a-zA-Z0-9.+-]*)$/.test(process.env.RELEASE_TAG ?? "")
+  )
+    throw new Error("Dispatch an immutable version tag from main");
+  const ref = `refs/tags/${process.env.RELEASE_TAG}`;
+  const sha = output("git", ["rev-parse", `${ref}^{commit}`]);
+  run("git", ["checkout", "--detach", sha]);
+  requireReleaseRef(ref, sha, metadata().version);
+  if (!process.env.GITHUB_OUTPUT) throw new Error("Missing workflow output destination");
+  writeFileSync(process.env.GITHUB_OUTPUT, `sha=${sha}\nref=${ref}\n`, { flag: "a" });
+}
+
+async function publicationCommand(command, directory, releaseRef) {
+  const candidate = verifyCandidate(directory, { complete: true, releaseRef });
+  run("docker", ["load", "--input", checkFile(directory, candidate.image.archive)]);
+  verifyLoadedImage(directory, candidate);
+  console.log(
+    JSON.stringify(
+      command === "preflight"
+        ? await registryPreflight(candidate, directory)
+        : await promoteArtifacts(candidate, directory),
+    ),
+  );
+}
+
+// Runs a candidate-building command; false leaves the command for main to dispatch.
+function candidateCommand(command, directory, values) {
+  if (["start-offline", "finish-offline"].includes(command) && values.evidence)
+    offlineIdentity(values.evidence, command === "finish-offline");
+  else if (command === "package" && directory)
+    packCandidate(directory, values["source-ref"], values.evidence);
+  else if (command === "image" && directory) buildImage(directory);
+  else if (command === "odoo" && directory && values.major)
+    qualifyOdoo(directory, Number(values.major));
+  else if (command === "archive" && directory) verifyArchive(directory);
+  else return false;
+  return true;
+}
+
 async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
@@ -720,48 +791,12 @@ async function main() {
   });
   const command = positionals[0];
   const directory = values.directory ? resolve(values.directory) : undefined;
-  if (["start-offline", "finish-offline"].includes(command) && values.evidence)
-    offlineIdentity(values.evidence, command === "finish-offline");
-  else if (command === "package" && directory)
-    packCandidate(directory, values["source-ref"], values.evidence);
-  else if (command === "image" && directory) buildImage(directory);
-  else if (command === "odoo" && directory && values.major)
-    qualifyOdoo(directory, Number(values.major));
-  else if (command === "archive" && directory) verifyArchive(directory);
-  else if (command === "verify" && directory) {
-    const candidate = verifyCandidate(directory, {
-      complete: values.complete,
-      releaseRef: values["release-ref"],
-    });
-    if (values["loaded-image"]) verifyLoadedImage(directory, candidate);
-    console.log(JSON.stringify(candidate, null, 2));
-  } else if (command === "resolve-release") {
-    if (
-      process.env.DISPATCH_REF !== "refs/heads/main" ||
-      !/^v\d+\.\d+\.\d+(?:[a-zA-Z0-9.+-]*)$/.test(process.env.RELEASE_TAG ?? "")
-    )
-      throw new Error("Dispatch an immutable version tag from main");
-    const ref = `refs/tags/${process.env.RELEASE_TAG}`;
-    const sha = output("git", ["rev-parse", `${ref}^{commit}`]);
-    run("git", ["checkout", "--detach", sha]);
-    requireReleaseRef(ref, sha, metadata().version);
-    if (!process.env.GITHUB_OUTPUT) throw new Error("Missing workflow output destination");
-    writeFileSync(process.env.GITHUB_OUTPUT, `sha=${sha}\nref=${ref}\n`, { flag: "a" });
-  } else if (["preflight", "promote"].includes(command) && directory && values["release-ref"]) {
-    const candidate = verifyCandidate(directory, {
-      complete: true,
-      releaseRef: values["release-ref"],
-    });
-    run("docker", ["load", "--input", checkFile(directory, candidate.image.archive)]);
-    verifyLoadedImage(directory, candidate);
-    console.log(
-      JSON.stringify(
-        command === "preflight"
-          ? await registryPreflight(candidate, directory)
-          : await promoteArtifacts(candidate, directory),
-      ),
-    );
-  } else
+  if (candidateCommand(command, directory, values)) return;
+  if (command === "verify" && directory) verifyCommand(directory, values);
+  else if (command === "resolve-release") resolveRelease();
+  else if (["preflight", "promote"].includes(command) && directory && values["release-ref"])
+    await publicationCommand(command, directory, values["release-ref"]);
+  else
     throw new Error(
       "Expected candidate command and required --directory/--evidence/--major options",
     );
