@@ -696,15 +696,12 @@ test("registry preflight validates identity and reconciles npm states", async (t
     image: "absent",
   });
   assert.equal(missing.seen.length, 3);
-  // A null versions document passes the object check and fails on lookup, still before GHCR.
-  const nullVersions = registries(state, { npm: { status: 200, body: { versions: null } } });
-  await assert.rejects(
-    registryPreflight(state.candidate, state.directory, nullVersions.options),
-    TypeError,
-  );
-  assert.equal(nullVersions.seen.length, 1);
   for (const npm of [
     { status: 200, body: {} },
+    { status: 200, body: { versions: null } },
+    { status: 200, body: { versions: [] } },
+    { status: 200, body: { versions: { "0.3.0": null } } },
+    { status: 404, body: null },
     { status: 500, body: {} },
   ]) {
     const unknown = registries(state, { npm });

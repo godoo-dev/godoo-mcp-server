@@ -624,11 +624,14 @@ async function registryJson(url, init, fetchImpl) {
 }
 
 function npmPackageState(npm, candidate, directory) {
-  if (npm.status === 404 && npm.body.error === "Not found") return "absent";
-  if (!(npm.status === 200 && npm.body && typeof npm.body.versions === "object"))
+  if (npm.status === 404 && npm.body?.error === "Not found") return "absent";
+  const versions = npm.body?.versions;
+  if (npm.status !== 200 || !versions || typeof versions !== "object" || Array.isArray(versions))
     throw new Error("npm registry state is unknown; publication stopped");
-  const existing = npm.body.versions[candidate.version];
-  if (!existing) return "absent";
+  if (!Object.hasOwn(versions, candidate.version)) return "absent";
+  const existing = versions[candidate.version];
+  if (!existing || typeof existing !== "object")
+    throw new Error("npm registry state is unknown; publication stopped");
   const integrity = `sha512-${createHash("sha512")
     .update(readFileSync(checkFile(directory, candidate.package)))
     .digest("base64")}`;

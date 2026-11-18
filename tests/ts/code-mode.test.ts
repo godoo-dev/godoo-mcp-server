@@ -457,7 +457,7 @@ describe("code engine limits", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     controller.abort();
     expect(await running).toMatchObject({ ok: false, error: "cancelled" });
-    // Abort stops first; the run loop then closes with deadline; cleanup repeats the terminal reason.
-    expect(closed).toEqual(["cancelled", "deadline", "cancelled"]);
+    // Abort stops first; cleanup repeats the terminal reason.
+    expect(closed).toEqual(["cancelled", "cancelled"]);
   });
 });
