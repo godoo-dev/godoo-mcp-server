@@ -54,8 +54,8 @@ package directory source_ref evidence: tools
 image directory:
     node .github/testing/candidate.mjs image --directory {{ quote(absolute_path(directory)) }}
 
-odoo directory major="18":
-    node .github/testing/candidate.mjs odoo --directory {{ quote(absolute_path(directory)) }} --major {{ quote(major) }}
+odoo directory major="18" suite="":
+    node .github/testing/candidate.mjs odoo --directory {{ quote(absolute_path(directory)) }} --major {{ quote(major) }} {{ if suite == "" { "" } else { "--suite " + quote(suite) } }}
 
 archive directory:
     node .github/testing/candidate.mjs archive --directory {{ quote(absolute_path(directory)) }}
