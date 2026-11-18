@@ -25,13 +25,14 @@ It runs every CI stage in order and stops at the first failure: `offline`,
 `archive`. Use a fresh directory per run: `package` refuses a directory that
 already holds a candidate. Its output is the result.
 
-CI runs the same stages in the same order on GitHub-hosted `ubuntu-latest`, one
-workflow step per stage, for every PR to main, pushes to main and the publish
-workflow; the stable `required` job fails unless `validation` succeeds. When
-`odoo_majors` or the stage list changes, change the `validation` steps in
-`.github/workflows/ci.yml` to match. The two Odoo stages take most of the run
-time; splitting them into parallel jobs trades runner starts for waiting time
-and is the owner's decision. Rely on CI on the
+CI runs the same stages on GitHub-hosted `ubuntu-latest`, one workflow step per
+stage, for every PR to main, pushes to main and the publish workflow. `build`
+runs offline, package and image once and passes the candidate and `dist/` on as
+a tar artifact. `odoo` runs the majors in parallel, as the owner chose to trade
+runner starts for waiting time. `validation` merges their proofs, runs `archive`
+and uploads `tested-candidate`. The stable protected check `required` fails
+unless all three succeed. When `odoo_majors` changes, change the `odoo` matrix
+in `.github/workflows/ci.yml` to match. Rely on CI on the
 PR for the full run; run `just check` yourself only when no CI run will cover it.
 
 Focused commands while iterating:

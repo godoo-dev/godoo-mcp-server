@@ -127,9 +127,16 @@ preflight reads and write atomic.
 ## CI and release configuration
 
 The [CI workflow](../.github/workflows/ci.yml) runs on PRs targeting main, pushes
-to main and manual/reusable invocations. One `validation` job runs the stages of
-`just check` in the same order, one step per stage so timings and failures show
-per stage; the stable `required` aggregate rejects any non-success result. A newer push to a
+to main and manual/reusable invocations. It runs the stages of `just check`, one
+step per stage, across four jobs:
+
+- `build` runs offline, package and image once, then passes the candidate and
+  `dist/` on as one tar artifact.
+- `odoo` runs each Odoo major in parallel. Its matrix mirrors `odoo_majors`.
+- `validation` adds both majors' proofs to the candidate, runs `archive` and
+  uploads `tested-candidate`.
+- `required` is the stable protected check. It fails unless all three jobs
+  succeed. A newer push to a
 PR cancels that PR's older run; runs on main, manual runs and publish
 revalidation each get their own concurrency group and are never cancelled by
 another run. Local runs do not establish hosted permissions, protections or
