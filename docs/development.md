@@ -136,7 +136,9 @@ step per stage, across four jobs:
 - `validation` adds both majors' proofs to the candidate, runs `archive` and
   uploads `tested-candidate`.
 - `required` is the stable protected check. It fails unless all three jobs
-  succeed. A newer push to a
+  succeed.
+
+A newer push to a
 PR cancels that PR's older run; runs on main, manual runs and publish
 revalidation each get their own concurrency group and are never cancelled by
 another run. Local runs do not establish hosted permissions, protections or
