@@ -72,22 +72,26 @@ describe("operational tools", () => {
     }
   });
 
-  it.each([
-    false,
-    null,
-    { nested: [0, false, "á"] },
-  ])("preserves native model_call results: %j", async (value) => {
-    const call = vi.fn().mockResolvedValue(value);
-    const { invoke, markWrite } = tools({ call });
-    const args = [[7], { extra: [false, null, 0] }];
-    const kwargs = { context: { lang: "es_ES" }, option: 3 };
-    expect(
-      await invoke("model_call", { model: "custom.model", method: "custom_method", args, kwargs }),
-    ).toEqual({ result: value });
-    expect(call).toHaveBeenCalledExactlyOnceWith("custom.model", "custom_method", args, kwargs);
-    expect(markWrite).toHaveBeenCalledOnce();
-    expect(markWrite.mock.invocationCallOrder[0]).toBeLessThan(call.mock.invocationCallOrder[0]);
-  });
+  it.each([false, null, { nested: [0, false, "á"] }])(
+    "preserves native model_call results: %j",
+    async (value) => {
+      const call = vi.fn().mockResolvedValue(value);
+      const { invoke, markWrite } = tools({ call });
+      const args = [[7], { extra: [false, null, 0] }];
+      const kwargs = { context: { lang: "es_ES" }, option: 3 };
+      expect(
+        await invoke("model_call", {
+          model: "custom.model",
+          method: "custom_method",
+          args,
+          kwargs,
+        }),
+      ).toEqual({ result: value });
+      expect(call).toHaveBeenCalledExactlyOnceWith("custom.model", "custom_method", args, kwargs);
+      expect(markWrite).toHaveBeenCalledOnce();
+      expect(markWrite.mock.invocationCallOrder[0]).toBeLessThan(call.mock.invocationCallOrder[0]);
+    },
+  );
 
   it("defaults omitted model_call arrays and objects without mutating inputs", async () => {
     const call = vi.fn().mockResolvedValue(false);
@@ -99,23 +103,21 @@ describe("operational tools", () => {
     expect(input.kwargs).toBeNull();
   });
 
-  it.each([
-    null,
-    [],
-    false,
-    "context",
-  ])("rejects invalid context before dispatch: %j", async (context) => {
-    const call = vi.fn();
-    const { invoke, markWrite } = tools({ call });
-    expect(() => validateModelCallArguments({ kwargs: { context } })).toThrow(
-      "kwargs.context must be an object",
-    );
-    await expect(
-      invoke("model_call", { model: "m", method: "f", kwargs: { context } }),
-    ).rejects.toThrow(PublicError);
-    expect(call).not.toHaveBeenCalled();
-    expect(markWrite).not.toHaveBeenCalled();
-  });
+  it.each([null, [], false, "context"])(
+    "rejects invalid context before dispatch: %j",
+    async (context) => {
+      const call = vi.fn();
+      const { invoke, markWrite } = tools({ call });
+      expect(() => validateModelCallArguments({ kwargs: { context } })).toThrow(
+        "kwargs.context must be an object",
+      );
+      await expect(
+        invoke("model_call", { model: "m", method: "f", kwargs: { context } }),
+      ).rejects.toThrow(PublicError);
+      expect(call).not.toHaveBeenCalled();
+      expect(markWrite).not.toHaveBeenCalled();
+    },
+  );
 
   it("preserves record selection and returns inline read envelopes", async () => {
     const read = vi.fn().mockResolvedValue([{ id: 7, name: "á" }]);
@@ -168,52 +170,45 @@ describe("operational tools", () => {
     expect(read).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    41,
-    [41],
-    "41",
-    "mail.activity(41,)",
-    "mail.activity(41)",
-  ])("normalizes singleton activity acknowledgment %j", async (result) => {
-    const call = vi.fn().mockResolvedValue(result);
-    const { invoke } = tools({ call });
-    expect(
-      await invoke("mail_schedule_activity", {
-        model: "res.partner",
-        res_id: 7,
+  it.each([41, [41], "41", "mail.activity(41,)", "mail.activity(41)"])(
+    "normalizes singleton activity acknowledgment %j",
+    async (result) => {
+      const call = vi.fn().mockResolvedValue(result);
+      const { invoke } = tools({ call });
+      expect(
+        await invoke("mail_schedule_activity", {
+          model: "res.partner",
+          res_id: 7,
+          activity_type_id: 3,
+          date_deadline: "2026-12-31",
+        }),
+      ).toEqual({ activity_id: 41 });
+      expect(call).toHaveBeenCalledExactlyOnceWith("res.partner", "activity_schedule", [7], {
         activity_type_id: 3,
         date_deadline: "2026-12-31",
-      }),
-    ).toEqual({ activity_id: 41 });
-    expect(call).toHaveBeenCalledExactlyOnceWith("res.partner", "activity_schedule", [7], {
-      activity_type_id: 3,
-      date_deadline: "2026-12-31",
-    });
-  });
+      });
+    },
+  );
 
-  it.each([
-    [],
-    [41, 42],
-    [true],
-    ["41"],
-    "mail.activity(41,) private-suffix",
-    null,
-  ])("marks malformed activity acknowledgment uncertain without replay: %j", async (result) => {
-    const call = vi.fn().mockResolvedValue(result);
-    const { invoke } = tools({ call });
-    await expect(
-      invoke("mail_schedule_activity", {
-        model: "res.partner",
-        res_id: 7,
-        activity_type_id: 3,
-        date_deadline: "2026-12-31",
-      }),
-    ).rejects.toMatchObject({
-      category: "unknown_write",
-      message: "Odoo write outcome is unknown; do not retry automatically",
-    });
-    expect(call).toHaveBeenCalledOnce();
-  });
+  it.each([[], [41, 42], [true], ["41"], "mail.activity(41,) private-suffix", null])(
+    "marks malformed activity acknowledgment uncertain without replay: %j",
+    async (result) => {
+      const call = vi.fn().mockResolvedValue(result);
+      const { invoke } = tools({ call });
+      await expect(
+        invoke("mail_schedule_activity", {
+          model: "res.partner",
+          res_id: 7,
+          activity_type_id: 3,
+          date_deadline: "2026-12-31",
+        }),
+      ).rejects.toMatchObject({
+        category: "unknown_write",
+        message: "Odoo write outcome is unknown; do not retry automatically",
+      });
+      expect(call).toHaveBeenCalledOnce();
+    },
+  );
 });
 
 describe("chatter formats and navigation", () => {
