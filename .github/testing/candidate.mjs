@@ -514,7 +514,9 @@ export function buildImage(directory, majors = [18, 19]) {
   }
 }
 
-export function qualifyOdoo(directory, major) {
+export function qualifyOdoo(directory, major, suite) {
+  if (suite !== undefined && (major !== 18 || !SUITES.includes(suite)))
+    throw new Error("Expected an Odoo 18 suite: source, installed or image");
   directory = resolve(directory);
   const candidate = verifyCandidate(directory);
   if (!candidate.odoo_majors.includes(major))
@@ -526,9 +528,14 @@ export function qualifyOdoo(directory, major) {
   verifyLoadedImage(directory, candidate);
   run("uv", ["sync", "--project", "tests/acceptance", "--frozen", "--python", "3.14.7"]);
   const proofs = {};
-  for (const suite of SUITES) proofs[suite] = qualifySuite(directory, candidate, major, suite);
+  for (const selected of suite === undefined ? SUITES : [suite])
+    proofs[selected] = qualifySuite(directory, candidate, major, selected);
   writeFileSync(
-    join(directory, `odoo-${major}.json`),
+    // A partial pass cannot qualify a release candidate or satisfy archive.
+    join(
+      directory,
+      suite === undefined ? `odoo-${major}.json` : `odoo-${major}-${suite}-proof.json`,
+    ),
     `${JSON.stringify({ image_id: candidate.image.id, package_sha256: candidate.package.sha256, worker_sha256: candidate.worker.sha256, proofs }, null, 2)}\n`,
   );
   return proofs;
@@ -773,7 +780,7 @@ function candidateCommand(command, directory, values) {
     packCandidate(directory, values["source-ref"], values.evidence);
   else if (command === "image" && directory) buildImage(directory);
   else if (command === "odoo" && directory && values.major)
-    qualifyOdoo(directory, Number(values.major));
+    qualifyOdoo(directory, Number(values.major), values.suite);
   else if (command === "archive" && directory) verifyArchive(directory);
   else return false;
   return true;
@@ -787,6 +794,7 @@ async function main() {
       evidence: { type: "string" },
       "source-ref": { type: "string", default: "local" },
       major: { type: "string" },
+      suite: { type: "string" },
       complete: { type: "boolean" },
       "loaded-image": { type: "boolean" },
       "release-ref": { type: "string" },
