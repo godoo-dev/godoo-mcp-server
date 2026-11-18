@@ -194,7 +194,4 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           ODOO_RESULT: ${{ needs.odoo.result }}
           VALIDATION_RESULT: ${{ needs.validation.result }}
-        run: |
-          test "$BUILD_RESULT" = success
-          test "$ODOO_RESULT" = success
-          test "$VALIDATION_RESULT" = success
+        run: test "$BUILD_RESULT" = success && test "$ODOO_RESULT" = success && test "$VALIDATION_RESULT" = success

@@ -218,13 +218,15 @@ test("required workflow gate rejects every result except success", () => {
   const workflow = readFileSync(join(ROOT, ".github/workflows/ci.yml"), "utf8");
   const command = workflow.split("\n  required:")[1]?.match(/\brun: (.+)/)?.[1];
   assert.ok(command, "Missing required workflow gate");
-  const check = (result) =>
-    execFileSync("bash", ["-euc", command], {
-      env: { ...process.env, VALIDATION_RESULT: result },
-    });
-  check("success");
-  for (const result of ["failure", "skipped", "cancelled", "", "null", "false"])
-    assert.throws(() => check(result));
+  const jobs = ["BUILD_RESULT", "ODOO_RESULT", "VALIDATION_RESULT"];
+  const check = (results) =>
+    execFileSync("bash", ["-euc", command], { env: { ...process.env, ...results } });
+  const all = (result) => Object.fromEntries(jobs.map((job) => [job, result]));
+  check(all("success"));
+  for (const result of ["failure", "skipped", "cancelled", "", "null", "false"]) {
+    assert.throws(() => check(all(result)));
+    for (const job of jobs) assert.throws(() => check({ ...all("success"), [job]: result }));
+  }
 });
 
 test("required JUnit rejects empty, truncated, skipped and errored reports", (t) => {
