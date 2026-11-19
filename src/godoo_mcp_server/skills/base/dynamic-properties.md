@@ -18,6 +18,7 @@ list describes each value with `name`, `label`, `type` and, for selections/tags,
 for both property keys and choices. For definitions before a task exists, use
 `property_field="task_properties", parent_id=7` instead of `record_id`.
 
+<!-- atlas: base/properties-type-taxonomy -->
 These names and IDs are illustrative. Discover the actual container field and
 parent on the target. Definitions depend on the parent: two projects can have
 different task properties. Reading a child does not grant access to its parent.
@@ -61,6 +62,9 @@ and composes one Odoo write. Do not combine a parent change or a raw write to th
 same container with friendly properties. Batch property writes are unsupported.
 Read back the affected and preserved values when verification is needed.
 
+<!-- atlas: base/properties-full-replacement-danger -->
+The underlying property container is replaced as a whole; a friendly sparse
+change therefore reads and merges existing values before writing the container.
 Read/merge/write is non-atomic: it cannot prevent concurrent lost updates, preserve
 hidden stored keys or prevent parent moves after preflight. A positive write reply
 is acknowledgement, not readback verification. If dispatch loses its reply, inspect
@@ -80,7 +84,8 @@ Supply each container's positive definition-parent ID explicitly in `values`;
 friendly creation cannot infer it from Odoo defaults. Nonempty property containers
 are validated before one create. Omitted properties keep server defaults; `null`
 clears. Valid false, zero, empty strings and lists are sent without substitution,
-although Odoo may normalize them on storage (an empty char reads back as `null`).
+then read back the stored and projected values. Input preservation does not
+guarantee a single empty-value encoding across raw fields and friendly projections.
 Do not mix raw property containers with friendly properties. Creation supports one
 record and returns `id` and `web_url`; use that ID to read back the intended fields.
 Definitions can change after preflight. A denied call stops, and a lost create

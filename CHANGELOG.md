@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Clarify served guidance for record relations, chatter recipients, activity defaults and tool boundaries.
+
 ## [0.2.0] - 2026-10-31
 
 ### Changed

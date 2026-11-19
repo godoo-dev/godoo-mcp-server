@@ -32,6 +32,7 @@ delivery. If storage fails, the tool returns a safe error instead of spilling th
 rows inline. Successful inline calls need no object storage. Search/read perform
 no Odoo business writes, but may create temporary copies in private object storage.
 
+<!-- atlas: base/search-paging-basic -->
 Do not assume a name is unique. Resolve ambiguity before a mutation. For pagination,
 keep the same domain/fields and deterministic order such as `id asc`, then advance
 `offset` by the page length from the inline or downloaded result. Finish on an
@@ -41,6 +42,8 @@ changes can move rows between pages. No dedicated exact-count/aggregate tool is 
 
 ## JSON domain syntax
 
+<!-- atlas: base/domains-logical-prefix -->
+<!-- atlas: base/search-domain-basic -->
 Conditions are triples `[field, operator, value]`, implicitly ANDed. `|` and `&`
 are binary prefix operators; `!` is unary. Examples:
 
@@ -56,17 +59,21 @@ are binary prefix operators; `!` is unary. Examples:
 ["&","|",["state","=","draft"],["state","=","sent"],["user_id","=",11]]
 ```
 
+<!-- atlas: base/domains-comparison-operators -->
+<!-- atlas: base/domains-ilike-autowrap -->
 Use `in`/`not in` with arrays. For a many2one ID compare to a number, not a read
 `[id,label]` tuple. `ilike` is useful for a case-insensitive substring query; use
 `=like`/`=ilike` only when the intended pattern and wildcard behavior are known.
 Do not paste Python expressions or domain strings into the JSON list.
 
+<!-- atlas: base/domains-relational-traversal -->
 Dotted relation domains such as `stage_id.fold` are passed unchanged to Odoo.
 Friendly `properties.<container>.<name>` paths resolve discovered property names
 and choices before pagination. These predicates initially require a conjunction
 constrained to one definition parent; see [dynamic properties](dynamic-properties.md).
 Property projection can add definition and record reads after selecting the page.
-A stage's `fold` is a Kanban display setting, not a universal completion flag.
+Standard project and CRM stage definitions use `fold` for Kanban display.
+Establish completion semantics separately for the target model.
 Inspect the model's state/selection fields and actual stage records to establish
 open/closed semantics. Names such as Done/Cancelled alone do not establish field
 values; do not infer a server domain bug merely from those names.
@@ -77,7 +84,16 @@ boundary) when selecting a whole day. For overdue work, establish the relevant
 user date/timezone before choosing the cutoff.
 
 The record search/read tools have no general context input. For a native method
-requiring context, use `model_call` with `kwargs.context`. Default Odoo
-active-record, language and company context still apply; an `active=false` or
-company domain cannot override those context defaults or the caller's ACLs. Do not
-claim exhaustive archived or multi-company results from an ordinary page.
+requiring context, use `model_call` with `kwargs.context`.
+
+<!-- atlas: base/search-active-domain-override -->
+To find archived records, inspect the model's archive field first. For a stock
+Odoo 18 model using `active`, search with `[["active","=",false]]`; naming that
+field in the domain lets this search select archived rows despite the default
+archive filter. If a native-method workflow needs to include archived rows
+without such a domain, pass
+`kwargs.context={"active_test":false}` through `model_call`. Treat every result
+as limited to what this caller may see; changing archive selection does not
+expand permissions or the allowed companies. To request both archive states,
+use `[["active","in",[true,false]]]`. Check language and company context
+separately, and report page bounds rather than claiming exhaustive coverage.

@@ -384,7 +384,7 @@
   "mail_post_message": {
     "name": "mail_post_message",
     "title": "Mail Post Message",
-    "description": "Post a message to any Odoo record's chatter (mail.thread mixin). Calls message_post on the given model/res_id. model: Odoo model name (e.g. 'res.partner'). res_id: numeric record id. body: message content. body_format: md (default), html or txt. Markdown becomes basic Odoo HTML; txt preserves literal text; Odoo sanitizes HTML. is_internal: True selects the internal-note subtype, intended for internal audiences. partner_ids: res.partner IDs to notify, not res.users IDs; resolve users' partner_id. Explicit recipients do not exclude followers or other Odoo notification behavior. Posting does not guarantee email delivery or a particular visibility policy. attachment_ids: list of existing ir.attachment ids to link. Returns message_id. A lost write reply needs readback before retry. Denial stops the call.",
+    "description": "Post a message to any Odoo record's chatter (mail.thread mixin). Calls message_post on the given model/res_id. model: Odoo model name (e.g. 'res.partner'). res_id: numeric record id. body: message content. body_format: md (default), html or txt. Markdown becomes basic Odoo HTML; txt preserves literal text; Odoo sanitizes HTML. is_internal: True selects the internal-note subtype, intended for internal audiences. partner_ids: res.partner IDs to notify, not res.users IDs; resolve users' partner_id. Explicit recipients do not exclude followers or other Odoo notification behavior. Posting does not guarantee email delivery or a particular visibility policy. attachment_ids: list of existing ir.attachment ids to link. Returns message_id. A lost write reply needs readback before retry. Denial stops the call. Execution failures return isError with sanitized text; inspect it without assuming a typed category or original exception details.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -454,7 +454,7 @@
   "mail_log_note": {
     "name": "mail_log_note",
     "title": "Mail Log Note",
-    "description": "Post an internal note on any Odoo record's chatter. Calls message_post with is_internal=True and subtype_xmlid='mail.mt_note'. model: Odoo model name. res_id: numeric record id. body: note content. body_format: md (default), html or txt. Markdown becomes basic Odoo HTML; txt preserves literal text; Odoo sanitizes HTML. No recipient-list input; use mail_post_message(is_internal=True) for explicit partners. Intended for internal audiences; Odoo controls visibility and notifications. Does not guarantee zero emails. Returns message_id. A lost write reply needs readback before retry; denial stops the call.",
+    "description": "Post an internal note on any Odoo record's chatter. Calls message_post with is_internal=True and subtype_xmlid='mail.mt_note'. model: Odoo model name. res_id: numeric record id. body: note content. body_format: md (default), html or txt. Markdown becomes basic Odoo HTML; txt preserves literal text; Odoo sanitizes HTML. No recipient-list input; use mail_post_message(is_internal=True) for explicit partners. Intended for internal audiences; Odoo controls visibility and notifications. Does not guarantee zero emails. Returns message_id. A lost write reply needs readback before retry; denial stops the call. Execution failures return isError with sanitized text; inspect it without assuming a typed category or original exception details.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -492,7 +492,7 @@
   "mail_list_messages": {
     "name": "mail_list_messages",
     "title": "Mail List Messages",
-    "description": "List chatter messages for an Odoo record. Calls search_read on mail.message with domain filtered by model and res_id. Returns messages ordered by date descending. model: Odoo model name. res_id: numeric record id. limit: max messages to return (default 80). offset: pagination offset.",
+    "description": "List chatter messages for an Odoo record. Calls search_read on mail.message with domain filtered by model and res_id. Returns messages ordered by date descending. model: Odoo model name. res_id: numeric record id. limit: max messages to return (default 80). offset: pagination offset. This directly searches visible mail.message rows; an empty page does not establish target validity or chatter support. Execution failures return isError with sanitized text rather than guaranteed typed error details.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -653,7 +653,7 @@
   "model_call": {
     "name": "model_call",
     "title": "Model Call",
-    "description": "Call a method on any installed Odoo model using the caller's credentials. model and method are technical names; args is the native positional argument array and kwargs is the keyword argument object. Omitted/null args and kwargs default to [] and {}. Pass Odoo context inside kwargs.context as an object. Recordset methods commonly take an ID list as the first positional argument, e.g. args=[[42]]. Returns result containing the unchanged native JSON value; returned actions are not executed. Methods can read, change or delete data and cause external effects: know the method contract and obtain authority for its effects. This tool adds no confirmation mechanism or privilege elevation. The client's existing safety guard is retained; no safetyLevel override. Do not retry automatically after an unknown outcome; inspect actual state first.",
+    "description": "Call a method on any installed Odoo model using the caller's credentials. model and method are technical names; args is the native positional argument array and kwargs is the keyword argument object. Omitted/null args and kwargs default to [] and {}. Pass Odoo context inside kwargs.context as an object. In Odoo 18 native dispatch, recordset methods take an ID list first (e.g. args=[[42]]); @api.model methods do not. Confirm the installed signature before constructing args. Returns result containing the unchanged native JSON value; returned actions are not executed. Methods can read, change or delete data and cause external effects: know the method contract and obtain authority for its effects. This tool adds no confirmation mechanism or privilege elevation. The client's existing safety guard is retained; no safetyLevel override. Do not retry automatically after an unknown outcome; inspect actual state first.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -998,7 +998,7 @@
   "users_whoami": {
     "name": "users_whoami",
     "title": "Users Whoami",
-    "description": "Return the authenticated Odoo user identity and configured target URL. username is the Odoo login value from the X-Odoo-Username header. URL and database are connection context, not a test/production classification.",
+    "description": "Return the authenticated session UID, configured login, database and target URL. The login can come from request headers or server environment. This is session/configuration information, not a separate health probe. Database and hostname establish neither production status nor write authority.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {},
