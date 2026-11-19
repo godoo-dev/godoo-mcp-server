@@ -18,11 +18,16 @@ Adapted source families:
 - `base/properties.md` → dynamic-property replacement and concurrency cautions.
 - `mail/chatter.md`, `mail/activities.md` → existing mail references.
 
+Source families informing the three topics written from scratch:
+
+- `mail/discuss.md` → Discuss.
+- `modules/accounting.md`, `modules/attendance.md`, `modules/contracts.md`,
+  `modules/product-configurator.md`, `modules/timesheets.md` → module workflows.
+- `oca/mis-builder.md`, `oca/mis-builder-dev.md` → MIS Builder.
+
 Examples were rewritten for this server's actual MCP contracts. Legacy CLI setup,
 TypeScript helpers, timer conventions, portal token creation and module-management/
 state workflows are not supplied by this bundle.
-Specialist accounting, contracts, attendance, timesheets, product configurator,
-Discuss and MIS Builder material remains outside this first adoption wave.
 Upstream testable examples are source evidence, not verification of these guides.
 
 The general `model_call` and `kwargs.context` guidance is original to this server
@@ -42,3 +47,8 @@ the discovery and record interfaces. The implementation consumes the separately
 LGPL-licensed [godoo-py properties service](https://github.com/godoo-dev/godoo-py/blob/f7a17cfab47e992419e09e4624632c620801c274/docs/services/properties.md);
 no library implementation code is copied into this CC0 documentation bundle.
 Names, choices and parent scopes replace the earlier raw full-replacement recipe.
+
+The Discuss, module-workflow and MIS Builder topics were written from scratch,
+informed by the source families listed above, under this bundle's CC0-1.0
+dedication. They carry no upstream sentences or code snippets and no separately
+licensed implementation code.

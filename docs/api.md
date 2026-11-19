@@ -418,7 +418,8 @@ subsequent downloads/logging; live provider and client acceptance remains open i
 | `odoo://menu/{id}` | Placeholder returning `menu_not_found`; use `discovery_list_menus` |
 
 Start at `skill://odoo/SKILL.md` or `guidance_get()`. The curated topics cover schema,
-field formats, queries, record changes, dynamic properties, chatter and activities.
+field formats, queries, record changes, dynamic properties, chatter and activities,
+plus `mail/discuss.md`, `modules/workflows.md` and `oca/mis-builder.md`.
 The [bundle provenance](../src/godoo_mcp_server/skills/PROVENANCE.md) records adapted
 sources and their CC0 dedication. Repository maintenance skills are separate.
 

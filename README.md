@@ -134,6 +134,10 @@ limits and download examples.
 - [Development](docs/development.md): checks, source layout, packaging and candidate validation.
 - [Bundled Odoo guidance](src/godoo_mcp_server/skills/SKILL.md): consumer workflows,
   also available through `guidance_get()` and `skill://odoo/SKILL.md`.
+  Topics include [Discuss](src/godoo_mcp_server/skills/mail/discuss.md),
+  [module workflows](src/godoo_mcp_server/skills/modules/workflows.md) and
+  [MIS Builder](src/godoo_mcp_server/skills/oca/mis-builder.md) for inspecting
+  installed schemas, making scoped changes and checking their outcomes.
 - [Guidance provenance](src/godoo_mcp_server/skills/PROVENANCE.md): adapted sources and licensing.
 - [Maintainer skills](.agents/skills/): [verification](.agents/skills/mcp-verification/SKILL.md),
   [consumer guidance authoring](.agents/skills/mcp-guidance-authoring/SKILL.md),
