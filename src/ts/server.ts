@@ -21,7 +21,7 @@ import { registerTools, validateModelCallArguments } from "./tools.js";
 import type { Credentials, Operation, Runtime, ToolArguments, ToolHandler } from "./types.js";
 
 declare const __VERSION__: string;
-export const version = typeof __VERSION__ === "undefined" ? "0.3.0" : __VERSION__;
+export const version = typeof __VERSION__ === "undefined" ? "0.3.1" : __VERSION__;
 export const protocolVersion = "2026-07-28";
 // Client debug messages can contain RPC arguments. Only bounded server-owned events are emitted.
 debug.disable();

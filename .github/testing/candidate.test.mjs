@@ -49,7 +49,7 @@ function fixture(t) {
   mkdirSync(join(root, "tests/acceptance"), { recursive: true });
   mkdirSync(candidateDirectory);
   mkdirSync(join(staging, "package/dist"), { recursive: true });
-  const packageMetadata = { name: "@godoo-dev/mcp-server", version: "0.3.0" };
+  const packageMetadata = { name: "@godoo-dev/mcp-server", version: "0.3.1" };
   for (const path of [join(root, "package.json"), join(staging, "package/package.json")])
     writeFileSync(path, JSON.stringify(packageMetadata));
   writeFileSync(join(root, "pnpm-lock.yaml"), "frozen node dependencies");
@@ -81,13 +81,13 @@ function fixture(t) {
     { cwd: root },
   );
   execFileSync("git", ["update-ref", "refs/remotes/origin/main", "HEAD"], { cwd: root });
-  execFileSync("git", ["tag", "v0.3.0"], { cwd: root });
+  execFileSync("git", ["tag", "v0.3.1"], { cwd: root });
   execFileSync("tar", ["-czf", join(candidateDirectory, "package.tgz"), "-C", staging, "package"]);
   copyFileSync(join(staging, "package/dist/worker.mjs"), join(candidateDirectory, "worker.mjs"));
   const candidate = {
     schema: 2,
     source: sourceIdentity(root),
-    source_ref: "refs/tags/v0.3.0",
+    source_ref: "refs/tags/v0.3.1",
     ...packageMetadata,
     locks: Object.fromEntries(
       ["pnpm-lock.yaml", "tests/acceptance/uv.lock"].map((path) => [
@@ -273,7 +273,7 @@ test("candidate rejects traversal, symlinks and changed file bytes", (t) => {
 
 test("packed candidate verifies package identity and exact Worker bytes", (t) => {
   const state = fixture(t);
-  assert.equal(verifyCandidate(state.directory, { root: state.root }).version, "0.3.0");
+  assert.equal(verifyCandidate(state.directory, { root: state.root }).version, "0.3.1");
   writeFileSync(join(state.directory, "worker.mjs"), "different worker");
   assert.throws(() => verifyCandidate(state.directory, { root: state.root }), /hash mismatch/);
   state.candidate.worker = fileRecord(join(state.directory, "worker.mjs"));
@@ -390,14 +390,14 @@ test("image observations reject wrong bytes, root and wrong installed version", 
 
 test("release requires clean matching version tag on main ancestry", (t) => {
   const state = fixture(t);
-  verifyCandidate(state.directory, { root: state.root, releaseRef: "refs/tags/v0.3.0" });
+  verifyCandidate(state.directory, { root: state.root, releaseRef: "refs/tags/v0.3.1" });
   assert.throws(() =>
-    requireReleaseRef("refs/tags/v0.4.0", state.candidate.source.sha, "0.3.0", state.root),
+    requireReleaseRef("refs/tags/v0.4.0", state.candidate.source.sha, "0.3.1", state.root),
   );
   state.candidate.source_ref = "local";
   state.save();
   assert.throws(
-    () => verifyCandidate(state.directory, { root: state.root, releaseRef: "refs/tags/v0.3.0" }),
+    () => verifyCandidate(state.directory, { root: state.root, releaseRef: "refs/tags/v0.3.1" }),
     /matching tag candidate/,
   );
 });
@@ -496,7 +496,7 @@ test("partial publication resumes only missing objects after exact byte reconcil
     status: 200,
     body: {
       versions: {
-        "0.3.0": {
+        "0.3.1": {
           name: state.candidate.name,
           version: state.candidate.version,
           dist: { integrity },
@@ -529,7 +529,7 @@ test("partial publication resumes only missing objects after exact byte reconcil
       expectedImage,
     );
   }
-  existingNpm.body.versions["0.3.0"].dist.integrity = "sha512-different";
+  existingNpm.body.versions["0.3.1"].dist.integrity = "sha512-different";
   await assert.rejects(
     registryPreflight(
       state.candidate,
@@ -655,7 +655,7 @@ test("release verification rejects dirty sources after the tag check", (t) => {
   state.candidate.source.dirty = true;
   state.save();
   assert.throws(
-    () => verifyCandidate(state.directory, { root: state.root, releaseRef: "refs/tags/v0.3.0" }),
+    () => verifyCandidate(state.directory, { root: state.root, releaseRef: "refs/tags/v0.3.1" }),
     /source identity differs/,
   );
   writeFileSync(join(state.root, "untracked.txt"), "dirty");
@@ -666,7 +666,7 @@ test("release verification rejects dirty sources after the tag check", (t) => {
     /immutable version tag/,
   );
   assert.throws(
-    () => verifyCandidate(state.directory, { root: state.root, releaseRef: "refs/tags/v0.3.0" }),
+    () => verifyCandidate(state.directory, { root: state.root, releaseRef: "refs/tags/v0.3.1" }),
     /clean matching tag candidate/,
   );
 });
@@ -700,7 +700,7 @@ test("registry preflight validates identity and reconciles npm states", async (t
     { status: 200, body: {} },
     { status: 200, body: { versions: null } },
     { status: 200, body: { versions: [] } },
-    { status: 200, body: { versions: { "0.3.0": null } } },
+    { status: 200, body: { versions: { "0.3.1": null } } },
     { status: 404, body: null },
     { status: 500, body: {} },
   ]) {
@@ -714,7 +714,7 @@ test("registry preflight validates identity and reconciles npm states", async (t
   const conflicting = registries(state, {
     npm: {
       status: 200,
-      body: { versions: { "0.3.0": { name: "other", version: "0.3.0", dist: {} } } },
+      body: { versions: { "0.3.1": { name: "other", version: "0.3.1", dist: {} } } },
     },
   });
   await assert.rejects(

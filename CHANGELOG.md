@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-11-20
+## [0.3.1] - 2026-11-20
+
+Version 0.3.0 was tagged but never published.
 
 ### Added
 
@@ -20,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Odoo acceptance tests use Godoo testcontainers 1.0.1 with the same client.
 
 - Clarify served guidance for record relations, chatter recipients, activity defaults and tool boundaries.
+
+### Fixed
+
+- Added the package repository URL so npm can verify release provenance.
 
 ## [0.2.0] - 2026-10-31
 
