@@ -1,7 +1,11 @@
 {
   "name": "@godoo-dev/mcp-server",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Stateless operational Odoo MCP for Node and Cloudflare Workers",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/godoo-dev/godoo-mcp-server.git"
+  },
   "type": "module",
   "license": "LGPL-3.0-or-later",
   "engines": {
