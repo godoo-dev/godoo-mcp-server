@@ -7,6 +7,7 @@ on it.
 
 ## List Models
 
+<!-- atlas: base/introspect-list-models -->
 Use `discovery_list_models` to list up to 500 accessible models. A missing entry
 does not prove a model or module is absent; use a focused `record_search` on
 `ir.model` or request the known model's fields when permitted.
@@ -26,6 +27,7 @@ modules — modules that are not installed are not included.
 
 ## Inspect a Model's Fields
 
+<!-- atlas: base/introspect-fields-get -->
 Use `discovery_get_fields` to see the fields on a specific model.
 
 **When to use:** Before reading records (to know what fields to request), before
@@ -57,15 +59,16 @@ the [dynamic properties guide](dynamic-properties.md) for read, update and searc
 
 ## Browse the Menu Hierarchy
 
+<!-- atlas: base/introspect-list-menus -->
 Use `discovery_list_menus` to browse the application menu structure.
 
 **When to use:** When you need to understand how the Odoo UI is organized — which
-applications are installed, what sections exist under each application, or to map
+sections are available to this caller, or to map
 menu entries to the models they display.
 
 **What it returns:** A flat list of menu entries with parent references. Each entry has a display
-name, an identifier, and optionally a parent entry. Top-level entries correspond to
-main applications (Sales, Purchase, Accounting, etc.).
+name, an identifier, and optionally a parent entry. Root entries help navigate
+visible applications; they are not a complete inventory of installed modules.
 
 ## Discover Before Operating
 
@@ -76,14 +79,13 @@ main applications (Sales, Purchase, Accounting, etc.).
 3. Call `record_search` with a domain based on the fields you just discovered.
 4. Call `record_read` with the field names you identified.
 
-This pattern works on any Odoo version with any set of installed modules. Never
-hardcode assumptions about field names or model structure — always discover first.
+Use this pattern where the target supports these discovery calls. Installed
+modules, permissions and customization determine what the caller can inspect.
 
 ## Notes
 
-Field identifiers and model technical names are stable within an Odoo version and
-module set but can differ across versions or when modules are installed or uninstalled.
-Always re-discover after a suspected schema change.
+Do not treat technical names or metadata as a compatibility guarantee.
+Refresh the relevant discovery after upgrades, module changes or customization.
 
 The catalog cache is in-process and lost on server restart; do not rely on a prior
 request having warmed it. `discovery_get_fields` makes a direct authenticated call.
