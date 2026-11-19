@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Served Discuss, module workflow and MIS Builder guidance with schema discovery,
+  bounded operations and outcome checks.
+
 ### Changed
 
 - Clarify served guidance for record relations, chatter recipients, activity defaults and tool boundaries.

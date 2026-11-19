@@ -17,6 +17,9 @@ lists every bundled topic. Serving this bundle does not install a client-native 
 - [Dynamic properties](base/dynamic-properties.md): discover, read, change and search friendly property names.
 - [Chatter](mail/chatter.md): messages, notes, recipients and mentions.
 - [Activities](mail/activities.md): numeric type discovery, scheduling and completion.
+- [Discuss](mail/discuss.md): channel discovery, membership and authorized posting.
+- [Module workflows](modules/workflows.md): inspect installed schemas and verify scoped changes.
+- [MIS Builder](oca/mis-builder.md): inspect report instances and templates, compute and read back.
 
 ## Select guidance for this target
 

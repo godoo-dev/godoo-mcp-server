@@ -5,6 +5,9 @@ import queries from "../godoo_mcp_server/skills/base/queries.md";
 import changes from "../godoo_mcp_server/skills/base/record-changes.md";
 import activities from "../godoo_mcp_server/skills/mail/activities.md";
 import chatter from "../godoo_mcp_server/skills/mail/chatter.md";
+import discuss from "../godoo_mcp_server/skills/mail/discuss.md";
+import workflows from "../godoo_mcp_server/skills/modules/workflows.md";
+import misBuilder from "../godoo_mcp_server/skills/oca/mis-builder.md";
 import root from "../godoo_mcp_server/skills/SKILL.md";
 
 export const topics = [
@@ -21,6 +24,24 @@ export const topics = [
   ],
   ["mail/chatter.md", "Chatter", "Messages, internal notes, recipients and mentions.", chatter],
   ["mail/activities.md", "Activities", "Type discovery, scheduling and completion.", activities],
+  [
+    "mail/discuss.md",
+    "Discuss",
+    "Discover channels, inspect membership and post with readback.",
+    discuss,
+  ],
+  [
+    "modules/workflows.md",
+    "Module workflows",
+    "Discover installed schemas and perform bounded module workflows.",
+    workflows,
+  ],
+  [
+    "oca/mis-builder.md",
+    "MIS Builder",
+    "Inspect reports and templates, compute and read back results.",
+    misBuilder,
+  ],
 ] as const;
 export const guidance = new Map<string, string>(topics.map(([path, , , text]) => [path, text]));
 export function guidanceIndex() {
