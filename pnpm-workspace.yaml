@@ -8,8 +8,6 @@ minimumReleaseAgeExclude:
   - '@cloudflare/workers-types@5.20261102.1'
   - miniflare@5.20261101.0-beta
   - wrangler@4.156.1
-patchedDependencies:
-  '@godoo-dev/client@0.8.0': patches/@godoo-dev__client@0.8.0.patch
-
-overrides:
-  '@godoo-dev/client': file:vendor/godoo-ts-1ff8868/godoo-dev-client-0.8.0.tgz
+  - '@godoo-dev/client@0.9.0'
+  - '@godoo-dev/introspection@0.3.0'
+  - '@godoo-dev/testcontainers@1.0.1'
