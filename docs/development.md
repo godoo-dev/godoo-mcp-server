@@ -117,10 +117,11 @@ compatibility flag. A quiet native SSE connection may report peer disconnection
 on its next 15-second heartbeat; native tests distinguish that cancellation from
 the longer operation timeout. `wrangler.jsonc` schedules cleanup every minute.
 
-The frozen build consumes published `@godoo-dev/client@0.8.0`. A small pnpm patch
-adds request-local fetch injection to its transport and types, so timeout/caller
-cancellation reaches Odoo without global fetch mutation. Tests exercise the actual
-patched client. Friendly property preflight freshly loads definitions, encodes all
+The build and tests use the published `@godoo-dev/client@0.9.0`. Its native
+request-local `fetch` option lets MCP propagate timeouts and caller cancellation
+to Odoo without changing the global `fetch`.
+
+Friendly property preflight freshly loads definitions, encodes all
 containers and only then dispatches the final mutation. This does not make the
 preflight reads and write atomic.
 
@@ -164,11 +165,9 @@ working material) are git-ignored.
 ## Code Mode build and verification
 
 `.github/build/code-assets.mjs` bundles the real portable SDK into a guest source string
-and indexes exact supplied declarations for progressive reference. The qualified
-unreleased SDK archives and hashes live in `vendor/godoo-ts-1ff8868/`; the lockfile
-and override bind client and introspection to the same client bytes. The existing
-request-local-fetch patch is rebased onto that client. Replace this source pin only
-with a qualified published release containing the portable/effect/reference APIs.
+and indexes exact supplied declarations for progressive reference. MCP pins `@godoo-dev/client` 0.9.0 and
+`@godoo-dev/introspection` 0.3.0 from npm. The lockfile records the integrity of
+both archives. The published client supports the request-local fetch used by MCP.
 
 `.github/build/meter-wasm.mjs` instruments the hash-pinned QuickJS module with
 Binaryen 125.0.0. It charges function/loop entries and bulk memory bytes, rejects

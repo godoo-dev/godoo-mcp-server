@@ -22,7 +22,7 @@ export function codeReference(section = "index"): unknown {
   if (section === "index")
     return {
       ...SDK_REFERENCE,
-      supplier_revision: "1ff88685b800f5d2e47bfb56d2f3dd7ef069df5d",
+      supplier_revision: "ddb56e0312c08b809fdb6a97646449be0ebfefac",
       globals: ["client", "sdk", "introspect", "introspection", "formatters", "console"],
       syntax:
         "Async JavaScript function body; use return for the final JSON value. No imports or TypeScript syntax.",
